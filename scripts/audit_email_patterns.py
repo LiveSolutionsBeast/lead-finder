@@ -43,7 +43,7 @@ def _backup_db():
     return dst
 
 
-def audit_company(company: dict, timeout: int = 30) -> dict | None:
+def audit_company(company: dict) -> dict | None:
     """Run v2 inference for one company and return a suggestion dict."""
     website = (company.get("website") or "").strip()
     if not website:
@@ -53,31 +53,13 @@ def audit_company(company: dict, timeout: int = 30) -> dict | None:
     if not domain:
         return None
 
-    try:
-        result = ai_infer_email_pattern_v2(
-            domain=domain,
-            company_name=company.get("name", ""),
-            industry=company.get("business_type", ""),
-            city=company.get("city", ""),
-            state=company.get("state", ""),
-            timeout=timeout,
-        )
-    except Exception as exc:
-        return {
-            "id": company["id"],
-            "name": company["name"],
-            "website": website,
-            "domain": domain,
-            "old_pattern": (company.get("email_pattern") or "").strip(),
-            "old_confidence": float(company.get("email_pattern_confidence") or 0.0),
-            "new_pattern": None,
-            "new_confidence": 0.0,
-            "reasoning": f"AI call failed: {exc}",
-            "pattern_index": None,
-            "same": False,
-            "failed": True,
-        }
-
+    result = ai_infer_email_pattern_v2(
+        domain=domain,
+        company_name=company.get("name", ""),
+        industry=company.get("business_type", ""),
+        city=company.get("city", ""),
+        state=company.get("state", ""),
+    )
     if not result or not result.get("pattern"):
         return None
 
@@ -102,6 +84,34 @@ def audit_company(company: dict, timeout: int = 30) -> dict | None:
     }
 
 
+def _new_pattern_matches_existing_emails(company_id: int, new_pattern: str) -> bool:
+    """
+    Safety check: if the company already has contacts with derived emails,
+    the new pattern should be able to reproduce at least one of them.
+    Returns True if no contacts exist, or if at least one existing email matches.
+    """
+    from lf_email_patterns import derive_email
+    conn = get_db()
+    cur = conn.cursor()
+    rows = cur.execute(
+        "SELECT first_name, last_name, email FROM contacts WHERE company_id=? AND email IS NOT NULL AND email != ''",
+        (company_id,),
+    ).fetchall()
+    conn.close()
+    if not rows:
+        return True  # no existing emails to contradict
+
+    for r in rows:
+        first = (r["first_name"] or "").strip()
+        last = (r["last_name"] or "").strip()
+        if not first or not last:
+            continue
+        expected = derive_email(first, last, new_pattern)
+        if expected and expected.lower() == (r["email"] or "").lower():
+            return True
+    return False
+
+
 def should_apply(suggestion: dict) -> bool:
     """High-confidence correction gate."""
     if suggestion["same"]:
@@ -110,6 +120,9 @@ def should_apply(suggestion: dict) -> bool:
         return False
     # Don't overwrite manually-perfect 1.0 patterns unless v2 is also 1.0
     if suggestion["old_confidence"] >= 1.0 and suggestion["new_confidence"] < 1.0:
+        return False
+    # Safety: new pattern must not contradict existing derived emails
+    if not _new_pattern_matches_existing_emails(suggestion["id"], suggestion["new_pattern"]):
         return False
     return True
 
@@ -122,7 +135,6 @@ def main():
         type=lambda s: [int(x.strip()) for x in s.split(",")],
         help="Comma-separated company IDs to audit (e.g. 590,591,614)",
     )
-    parser.add_argument("--timeout", type=int, default=30, help="Per-company AI timeout in seconds (default 30)")
     parser.add_argument("--min-conf", type=float, default=0.85, help="Minimum confidence to apply (default 0.85)")
     args = parser.parse_args()
 
@@ -152,7 +164,7 @@ def main():
     suggestions = []
     for row in rows:
         company = dict(row)
-        suggestion = audit_company(company, timeout=args.timeout)
+        suggestion = audit_company(company)
         if not suggestion:
             # Could not infer — keep but mark
             print(
