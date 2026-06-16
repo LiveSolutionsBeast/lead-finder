@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Backups / databases
+*.db
+*.db.bak
+*.bak
+backups/
+
+# Exports
+exports/
+*.csv
+!static/*.csv
+
+# Logs
+logs/
+*.log
+
+# AI stack
+email-validator-fork/
+
+# Local config
+.env
+.env.local
+.vscode/
+.idea/
+*.swp
+.DS_Store

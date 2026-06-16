@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Lead Finder - Email Validation</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f172a'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-weight='800' font-size='32' fill='%2338bdf8'%3ELS%3C/text%3E%3C/svg%3E"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#f1f5f9;min-height:100vh}
+.app{max-width:1200px;margin:0 auto;padding:2rem}
+.nav{display:flex;gap:0.5rem;margin-bottom:2rem;flex-wrap:wrap}
+.nav a{padding:0.6rem 1.2rem;background:#1e293b;color:#94a3b8;text-decoration:none;border-radius:6px;font-size:0.9rem;transition:all 0.2s}
+.nav a:hover,.nav a.active{background:#38bdf8;color:#0f172a;font-weight:600}
+.card{background:#1e293b;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
+.card h2{font-size:1rem;color:#94a3b8;margin-bottom:1rem;text-transform:uppercase;letter-spacing:0.05em}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:#1e293b;border-radius:10px;padding:1.2rem;text-align:center}
+.stat-value{font-size:2rem;font-weight:700;color:#38bdf8}
+.stat-label{font-size:0.8rem;color:#64748b;text-transform:uppercase;margin-top:0.3rem}
+.btn{padding:0.6rem 1.4rem;background:#38bdf8;color:#0f172a;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer;transition:opacity 0.2s}
+.btn:hover{opacity:0.85}
+.btn-green{background:#22c55e;color:#0f172a}
+.btn-red{background:#ef4444;color:#fff}
+.btn-sm{padding:0.35rem 0.7rem;font-size:0.8rem;border-radius:4px;cursor:pointer;border:none;font-weight:600}
+.btn-orange{background:#f59e0b;color:#0f172a}
+input,select,textarea{padding:0.6rem 1rem;background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:6px;font-size:0.9rem;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#38bdf8}
+textarea{width:100%;min-height:160px;resize:vertical;font-family:monospace}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:0.85rem}
+th{text-align:left;padding:0.6rem 0.8rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.75rem;text-transform:uppercase;white-space:nowrap}
+td{padding:0.6rem 0.8rem;border-bottom:1px solid #1e293b}
+tr:hover td{background:#1e293b}
+.badge{display:inline-block;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;font-weight:600}
+.badge-green{background:#22c55e33;color:#22c55e}
+.badge-red{background:#ef444433;color:#ef4444}
+.badge-orange{background:#f59e0b33;color:#f59e0b}
+.badge-gray{background:#64748b33;color:#94a3b8}
+.tabs{display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #334155}
+.tab{padding:0.7rem 1.4rem;background:transparent;color:#94a3b8;border:none;font-size:0.9rem;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.2s}
+.tab:hover{color:#f1f5f9}
+.tab.active{color:#38bdf8;border-bottom-color:#38bdf8}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.progress-bar{height:6px;background:#334155;border-radius:3px;overflow:hidden;margin:1rem 0}
+.progress-fill{height:100%;background:#38bdf8;transition:width 0.3s;border-radius:3px}
+.msg{padding:0.75rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:0.9rem}
+.msg-info{background:#38bdf833;color:#38bdf8}
+.msg-error{background:#ef444433;color:#ef4444}
+.msg-success{background:#22c55e33;color:#22c55e}
+.msg-warning{background:#f59e0b33;color:#f59e0b}
+.page-controls{display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap}
+.filter-row{display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center}
+.hidden{display:none}
+.inline-code{color:#38bdf8;font-family:monospace;font-size:0.85rem}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="nav">
+<a href="/finder/">Search</a>
+<a href="/finder/sessions">Sessions</a>
+<a href="/finder/companies">Companies</a>
+<a href="/finder/contacts">Contacts</a>
+<a href="/finder/emails" class="active">&#9993; Email Validation</a>
+<a href="/finder/audit">Audit</a>
+<span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;font-size:0.8rem;">
+  <span style="color:#22c55e;">P1-P5 &#10003;</span>
+  <span style="color:#22c55e;">QC-10 AI &#10003;</span>
+  <span style="background:#38bdf833;color:#38bdf8;padding:0.3rem 0.6rem;border-radius:4px;font-weight:600;">&#9993; EV-NEW</span>
+</span>
+</div>
+
+<div class="stats-grid">
+<div class="stat-card"><div class="stat-value" id="statProbed">-</div><div class="stat-label">Emails Probed</div></div>
+<div class="stat-card"><div class="stat-value" id="statDomains">-</div><div class="stat-label">Unique Domains</div></div>
+<div class="stat-card"><div class="stat-value" id="statOk">-</div><div class="stat-label">Okay to Send</div></div>
+<div class="stat-card"><div class="stat-value" id="statBlocked">-</div><div class="stat-label">Do Not Send</div></div>
+<div class="stat-card"><div class="stat-value" style="color:#f59e0b;" id="statSmtp">-</div><div class="stat-label">SMTP Probes</div></div>
+<div class="stat-card"><div class="stat-value" style="color:#22c55e;" id="statReady">-</div><div class="stat-label">Ready for Export</div></div>
+</div>
+
+<div class="card" id="smtpBanner">
+<h2>SMTP Probing Status</h2>
+<p id="smtpStatusText" style="color:#94a3b8;font-size:0.9rem;">Checking...</p>
+</div>
+
+<div class="tabs">
+<button class="tab active" data-tab="quick" onclick="switchTab('quick')">Quick Validate</button>
+<button class="tab" data-tab="derive" onclick="switchTab('derive')">Validate Derived</button>
+<button class="tab" data-tab="export" onclick="switchTab('export')">&#128230; Ready for Export</button>
+<button class="tab" data-tab="cache" onclick="switchTab('cache')">Cache Inspector</button>
+</div>
+
+<!-- Tab 1: Quick Validate -->
+<div id="tab-quick" class="tab-content active">
+<div class="card">
+<h2>Paste Email Addresses</h2>
+<p style="color:#94a3b8;font-size:0.85rem;margin-bottom:1rem;">One per line. Results are live-updated as they complete.</p>
+<textarea id="quickEmails" placeholder="email1@example.com&#10;email2@example.com&#10;..."></textarea>
+<div class="filter-row" style="margin-top:0.75rem;">
+<button class="btn" onclick="runQuickValidate()">&#9654; Validate</button>
+<button class="btn-sm btn-orange" onclick="document.getElementById('quickEmails').value=''">&#10005; Clear</button>
+</div>
+<div id="quickProgress" class="hidden">
+<div class="progress-bar"><div class="progress-fill" id="quickProgressFill" style="width:0%"></div></div>
+</div>
+<div id="quickResults" class="table-wrap"></div>
+</div>
+</div>
+
+<!-- Tab 2: Validate Derived -->
+<div id="tab-derive" class="tab-content">
+<div class="card">
+<h2>Validate Derived Emails in a Session</h2>
+<p style="color:#94a3b8;font-size:0.85rem;margin-bottom:1rem;">Runs SMTP validation on all contacts with derived emails in the selected session.</p>
+<div class="filter-row">
+<select id="sessionSelect" style="min-width:250px;">
+<option value="">Loading sessions...</option>
+</select>
+<button class="btn" onclick="runDerivedValidation()">&#9654; Validate Session Emails</button>
+</div>
+<div id="deriveProgress" class="hidden">
+<div class="progress-bar"><div class="progress-fill" id="deriveProgressFill" style="width:0%"></div></div>
+</div>
+<div id="deriveStatus" class="msg hidden"></div>
+<div id="deriveResults" class="table-wrap"></div>
+</div>
+</div>
+
+<!-- Tab 3: Cache Inspector -->
+<div id="tab-cache" class="tab-content">
+<div class="card">
+<h2>Validation Cache &amp; Recent Probes</h2>
+<div class="filter-row">
+<button class="btn-sm btn-green" onclick="loadCache()">&#8635; Refresh</button>
+</div>
+<div id="cacheTable" class="table-wrap"></div>
+</div>
+</div>
+</div>
+
+<!-- Tab 4: Ready for Export -->
+<div id="tab-export" class="tab-content">
+<div class="card">
+<h2>Contacts Ready for Export</h2>
+<p style="color:#94a3b8;font-size:0.85rem;margin-bottom:1rem;">Contacts whose derived email has been validated as <strong style="color:#22c55e;">Okay to Send</strong>. Safe to import into Salesforce or outreach pipelines.</p>
+<div class="filter-row">
+<button class="btn-sm btn-green" onclick="loadReadyForExport()">&#8635; Refresh</button>
+<button class="btn-sm btn-orange" onclick="exportReadyCSV()">&#11015; Download CSV</button>
+</div>
+<div id="exportTable" class="table-wrap"></div>
+</div>
+</div>
+
+<script>
+// ---- API Helpers ----
+const API_KEY = '';
+
+function getHeaders() {
+    const h = new Headers({'Content-Type': 'application/json', 'X-LF-Key': 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6'});
+    return h;
+}
+
+async function api(method, path, body) {
+    const opts = {method, headers: getHeaders()};
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(path, opts);
+    if (!r.ok) {
+        const err = await r.text().catch(() => r.statusText);
+        throw new Error(`${r.status}: ${err}`);
+    }
+    return r.json();
+}
+
+// ---- Tab Switching ----
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+    document.getElementById(`tab-${name}`).classList.add('active');
+}
+
+// ---- Status Display Helpers ----
+function statusBadge(status) {
+    const icons = {'Okay to Send': '&#128994;', 'Do Not Send': '&#128308;', 'Maybe': '&#128992;', 'Unknown': '&#9898;'};
+    const icon = icons[status] || '&#9898;';
+    let cls = 'badge-gray';
+    if (status === 'Okay to Send') cls = 'badge-green';
+    else if (status === 'Do Not Send') cls = 'badge-red';
+    else if (status === 'Maybe') cls = 'badge-orange';
+    return `<span class="badge ${cls}">${icon} ${status}</span>`;
+}
+
+function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+// ---- Load SMTP Status ----
+async function loadSmtpStatus() {
+    try {
+        const data = await api('GET', '/api/email/cache-stats');
+        const enabled = data.smtp_probing_enabled;
+        document.getElementById('statProbed').textContent = data.cache.total;
+        document.getElementById('statDomains').textContent = data.cache.unique_domains;
+        const byStatus = data.cache.by_status || {};
+        document.getElementById('statOk').textContent = (byStatus['Okay to Send'] || 0);
+        document.getElementById('statBlocked').textContent = (byStatus['Do Not Send'] || 0);
+        document.getElementById('statSmtp').textContent = (enabled ? 'ON' : 'OFF');
+        // Ready for export count is not in cache-stats; load it from ready-for-export endpoint
+        try {
+            const ready = await api('GET', '/api/email/ready-for-export?limit=1');
+            document.getElementById('statReady').textContent = ready.total || 0;
+        } catch (e) {
+            document.getElementById('statReady').textContent = '?';
+        }
+        document.getElementById('smtpStatusText').innerHTML = enabled
+            ? 'SMTP probing is <strong style="color:#22c55e;">ENABLED</strong>. All emails will be probed via RCPT TO.'
+            : 'SMTP probing is <strong style="color:#f59e0b;">DISABLED</strong>. Only syntax + MX + disposable checks run. Toggle in <span class="inline-code">lf_config.json: email_validation.enabled</span>';
+    } catch (e) {
+        document.getElementById('smtpStatusText').textContent = 'Error loading status: ' + e.message;
+    }
+}
+
+// ---- Quick Validate ----
+async function runQuickValidate() {
+    const input = document.getElementById('quickEmails').value.trim();
+    if (!input) return;
+    const emails = input.split('\n').map(l => l.trim()).filter(l => l);
+    if (!emails.length) return;
+
+    const progress = document.getElementById('quickProgress');
+    const fill = document.getElementById('quickProgressFill');
+    const resultsDiv = document.getElementById('quickResults');
+    progress.classList.remove('hidden');
+    resultsDiv.innerHTML = '';
+
+    try {
+        const data = await api('POST', '/api/email/validate-batch', {emails});
+        const jobId = data.job_id;
+
+        // Poll job status
+        const poll = setInterval(async () => {
+            try {
+                const job = await api('GET', `/api/email/validate-job/${jobId}`);
+                const pct = job.total > 0 ? Math.round((job.done / job.total) * 100) : 0;
+                fill.style.width = pct + '%';
+
+                // Show partial results
+                if (job.results && Array.isArray(job.results) && job.results.length > 0) {
+                    renderResults(job.results, resultsDiv);
+                }
+
+                if (job.status === 'completed' || job.status === 'failed') {
+                    clearInterval(poll);
+                    if (job.status === 'completed' && job.results) {
+                        renderResults(job.results, resultsDiv);
+                    } else if (job.status === 'failed') {
+                        resultsDiv.innerHTML = '<div class="msg msg-error">&#10060; Validation job failed.</div>';
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+        }, 1000);
+    } catch (e) {
+        resultsDiv.innerHTML = `<div class="msg msg-error">&#10060; Error: ${esc(e.message)}</div>`;
+        progress.classList.add('hidden');
+    }
+}
+
+function renderResults(results, container) {
+    if (!results || !results.length) {
+        container.innerHTML = '<div class="msg msg-info">No results yet.</div>';
+        return;
+    }
+    let html = '<table><thead><tr><th>Email</th><th>Status</th><th>Analysis</th><th>Domain</th><th>SMTP</th><th>MX</th></tr></thead><tbody>';
+    for (const r of results) {
+        html += `<tr>
+            <td style="font-family:monospace;font-size:0.8rem;">${esc(r.email)}</td>
+            <td>${statusBadge(r.status)}</td>
+            <td>${esc(r.analysis)}</td>
+            <td>${esc(r.domain)}</td>
+            <td>${r.smtp_probed ? esc(r.smtp_code || 'OK') : '-'}</td>
+            <td style="font-size:0.8rem;color:#94a3b8;">${esc(r.mx_host || '-')}</td>
+        </tr>`;
+    }
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+// ---- Validate Derived ----
+async function loadSessions() {
+    try {
+        const sessions = await api('GET', '/api/sessions');
+        const sel = document.getElementById('sessionSelect');
+        sel.innerHTML = '<option value="">Select a session...</option>';
+        for (const s of sessions) {
+            const opt = document.createElement('option');
+            opt.value = s.session_key;
+            opt.textContent = `${s.industry || '-'} @ ${s.city || '-'}, ${s.state || '-'} (${s.session_key})`;
+            sel.appendChild(opt);
+        }
+    } catch (e) {
+        document.getElementById('sessionSelect').innerHTML = `<option value="">Error: ${esc(e.message)}</option>`;
+    }
+}
+
+async function runDerivedValidation() {
+    const sessionKey = document.getElementById('sessionSelect').value;
+    if (!sessionKey) return;
+
+    const progress = document.getElementById('deriveProgress');
+    const fill = document.getElementById('deriveProgressFill');
+    const statusDiv = document.getElementById('deriveStatus');
+    const resultsDiv = document.getElementById('deriveResults');
+    progress.classList.remove('hidden');
+    statusDiv.classList.add('hidden');
+    resultsDiv.innerHTML = '';
+    fill.style.width = '0%';
+
+    try {
+        const data = await api('POST', '/api/contacts/validate-emails', {session_key: sessionKey});
+        const jobId = data.job_id;
+        statusDiv.className = 'msg msg-info';
+        statusDiv.classList.remove('hidden');
+        statusDiv.innerHTML = `&#9203; Validating ${data.total} emails... (job: ${jobId})`;
+
+        const poll = setInterval(async () => {
+            try {
+                const job = await api('GET', `/api/email/validate-job/${jobId}`);
+                const pct = job.total > 0 ? Math.round((job.done / job.total) * 100) : 0;
+                fill.style.width = pct + '%';
+                statusDiv.innerHTML = `&#9203; ${job.done}/${job.total} validated...`;
+
+                if (job.results && Array.isArray(job.results) && job.results.length > 0) {
+                    renderResults(job.results, resultsDiv);
+                }
+
+                if (job.status === 'completed' || job.status === 'failed') {
+                    clearInterval(poll);
+                    if (job.status === 'completed') {
+                        statusDiv.className = 'msg msg-success';
+                        statusDiv.innerHTML = `&#9989; Done! ${job.total} emails validated.`;
+                        if (job.results) renderResults(job.results, resultsDiv);
+                        loadSmtpStatus(); // refresh stats
+                    } else {
+                        statusDiv.className = 'msg msg-error';
+                        statusDiv.innerHTML = '&#10060; Validation job failed.';
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+        }, 1000);
+    } catch (e) {
+        statusDiv.className = 'msg msg-error';
+        statusDiv.classList.remove('hidden');
+        statusDiv.innerHTML = `&#10060; Error: ${esc(e.message)}`;
+    }
+}
+
+// ---- Cache Inspector ----
+async function loadCache() {
+    const container = document.getElementById('cacheTable');
+    container.innerHTML = '<div class="msg msg-info">&#9203; Loading...</div>';
+    try {
+        const data = await api('GET', '/api/email/cache-stats');
+        const probes = data.recent_probes || [];
+        if (!probes.length) {
+            container.innerHTML = '<div class="msg msg-warning">No cached probes yet. Run validation first.</div>';
+            return;
+        }
+        let html = `<p style="color:#94a3b8;font-size:0.85rem;margin-bottom:0.75rem;">${probes.length} most recent probes</p>`;
+        html += '<table><thead><tr><th>Email</th><th>Status</th><th>Analysis</th><th>Domain</th><th>Validated At</th></tr></thead><tbody>';
+        for (const p of probes) {
+            html += `<tr>
+                <td style="font-family:monospace;font-size:0.8rem;">${esc(p.email)}</td>
+                <td>${statusBadge(p.status)}</td>
+                <td>${esc(p.analysis)}</td>
+                <td>${esc(p.domain)}</td>
+                <td style="font-size:0.8rem;color:#94a3b8;">${esc(p.validated_at || '-')}</td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div class="msg msg-error">&#10060; Error: ${esc(e.message)}</div>`;
+    }
+}
+
+// ---- Ready for Export ----
+let _readyForExportData = [];
+
+async function loadReadyForExport() {
+    const container = document.getElementById('exportTable');
+    container.innerHTML = '<div class="msg msg-info">&#9203; Loading...</div>';
+    try {
+        const data = await api('GET', '/api/email/ready-for-export?limit=500');
+        _readyForExportData = data.contacts || [];
+        if (!_readyForExportData.length) {
+            container.innerHTML = '<div class="msg msg-warning">No contacts ready for export yet. Run validation first.</div>';
+            return;
+        }
+        let html = `<p style="color:#94a3b8;font-size:0.85rem;margin-bottom:0.75rem;">${data.total} contacts ready for export</p>`;
+        html += '<table><thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Company</th><th>City</th><th>State</th><th>Pattern Confidence</th><th>Validated At</th></tr></thead><tbody>';
+        for (const c of _readyForExportData) {
+            html += `<tr>
+                <td>${esc(c.full_name)}</td>
+                <td style="font-family:monospace;font-size:0.8rem;">${esc(c.email)}</td>
+                <td>${esc(c.title || '-')}</td>
+                <td>${esc(c.company_name || '-')}</td>
+                <td>${esc(c.city || '-')}</td>
+                <td>${esc(c.state || '-')}</td>
+                <td>${esc(c.email_pattern_confidence || '-')}</td>
+                <td style="font-size:0.8rem;color:#94a3b8;">${esc(c.smtp_validated_at || '-')}</td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div class="msg msg-error">&#10060; Error: ${esc(e.message)}</div>`;
+    }
+}
+
+function exportReadyCSV() {
+    if (!_readyForExportData.length) {
+        alert('No ready-for-export data loaded. Click Refresh first.');
+        return;
+    }
+    const headers = ['id','full_name','email','title','company_name','city','state','website','email_pattern','email_pattern_confidence','linkedin_url','validated_at'];
+    let csv = headers.join(',') + '\n';
+    for (const c of _readyForExportData) {
+        const row = headers.map(h => `"${(c[h] || '').replace(/"/g, '""')}"`).join(',');
+        csv += row + '\n';
+    }
+    const blob = new Blob([csv], {type: 'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lf_ready_for_export_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ---- Init ----
+loadSmtpStatus();
+loadSessions();
+</script>
+</body>
+</html>

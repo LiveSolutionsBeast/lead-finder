@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Lead Finder - Sessions</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f172a'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-weight='800' font-size='32' fill='%2338bdf8'%3ELS%3C/text%3E%3C/svg%3E"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#f1f5f9;min-height:100vh}
+.app{max-width:1400px;margin:0 auto;padding:2rem}
+.nav{display:flex;gap:0.5rem;margin-bottom:2rem;flex-wrap:wrap}
+.nav a{padding:0.6rem 1.2rem;background:#1e293b;color:#94a3b8;text-decoration:none;border-radius:6px;font-size:0.9rem;transition:all 0.2s}
+.nav a:hover,.nav a.active{background:#38bdf8;color:#0f172a;font-weight:600}
+.card{background:#1e293b;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
+.card h2{font-size:1rem;color:#94a3b8;margin-bottom:1rem;text-transform:uppercase;letter-spacing:0.05em}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:#1e293b;border-radius:10px;padding:1.2rem;text-align:center}
+.stat-value{font-size:2rem;font-weight:700;color:#38bdf8}
+.stat-label{font-size:0.8rem;color:#64748b;text-transform:uppercase;margin-top:0.3rem}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:0.9rem}
+th{text-align:left;padding:0.75rem 1rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.75rem;text-transform:uppercase}
+td{padding:0.75rem 1rem;border-bottom:1px solid #1e293b}
+tr:hover td{background:#1e293b}
+.btn{padding:0.6rem 1.4rem;background:#38bdf8;color:#0f172a;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer}
+.btn-sm{padding:0.4rem 0.8rem;font-size:0.8rem}
+.hidden{display:none}
+.badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600}
+.badge-local{background:#22c55e33;color:#22c55e}
+.badge-hq{background:#f59e0b33;color:#f59e0b}
+.badge-blue{background:#38bdf833;color:#38bdf8}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="nav">
+<a href="/finder/">Search</a>
+<a href="/finder/sessions" class="active">Sessions</a>
+<a href="/finder/companies">Companies</a>
+<a href="/finder/contacts">Contacts</a>
+<a href="/finder/emails">&#9993; Email Validation</a>
+  <a href="/finder/audit">Audit</a>
+<span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;font-size:0.8rem;">
+  <span style="color:#22c55e;">P1-P5 ✓</span>
+  <span style="background:#22c55e33;color:#22c55e;padding:0.3rem 0.6rem;border-radius:4px;font-weight:600;" title="AI Enrichment enabled (added 2026-06-06)">QC-10 AI ✓</span>
+</span>
+</div>
+
+<div class="stats-grid">
+<div class="stat-card"><div class="stat-value" id="statCompanies">-</div><div class="stat-label">Companies</div></div>
+<div class="stat-card"><div class="stat-value" id="statContacts">-</div><div class="stat-label">Contacts</div></div>
+<div class="stat-card"><div class="stat-value" id="statSessions">-</div><div class="stat-label">Sessions</div></div>
+</div>
+
+<div class="card">
+<h2>Search Sessions</h2>
+<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+<label style="font-size:0.8rem;color:#94a3b8;">Per page: <select id="perPage" onchange="loadSessions()">
+<option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option>
+</select></label>
+<span style="color:#94a3b8;font-size:0.8rem;" id="pageInfo"></span>
+</div>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Session Key</th><th>Industry</th><th>City</th><th>State</th><th>Created</th><th>Actions</th></tr></thead>
+<tbody id="sessionsTable"></tbody>
+</table>
+</div>
+</div>
+
+<div id="sessionDetail" class="card hidden">
+<h2 id="detailTitle" style="font-size:1.1rem;color:#38bdf8;margin-bottom:1rem;"></h2>
+<div id="detailContent"></div>
+</div>
+
+</div>
+
+<script>
+const API_BASE = '/api';
+const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
+
+async function loadStats() {
+  try {
+    const r = await fetch(API_BASE+'/stats', {headers: {'X-LF-Key': API_KEY}});
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('statCompanies').textContent = d.companies || 0;
+    document.getElementById('statContacts').textContent = d.contacts || 0;
+    document.getElementById('statSessions').textContent = d.sessions || 0;
+  } catch(e) { console.error('stats error:', e); }
+}
+
+async function loadSessions() {
+  const r = await fetch(API_BASE+'/sessions', {headers: {'X-LF-Key': API_KEY}});
+  const sessions = await r.json();
+  const perPage = parseInt(document.getElementById('perPage').value) || 20;
+  const tbody = document.getElementById('sessionsTable');
+  tbody.innerHTML = '';
+  document.getElementById('pageInfo').textContent = sessions.length + ' sessions' + (sessions.length > perPage ? ' (showing ' + perPage + ')' : '');
+  const maxShow = Math.min(perPage, sessions.length);
+  for (let i = 0; i < maxShow; i++) {
+    const s = sessions[i];
+    const created = s.created_at ? s.created_at.substring(0,16).replace('T',' ') : '';
+     tbody.innerHTML += '<tr><td style="font-family:monospace;color:#38bdf8;">'+s.session_key+'</td><td>'+s.industry+'</td><td>'+s.city+'</td><td>'+s.state+'</td><td>'+created+'</td><td><button class="btn btn-sm" onclick="loadSession(\''+s.session_key+'\')">View</button> <button class="btn btn-sm btn-orange" onclick="resumeSession(\''+s.session_key+'\')">Resume</button> <button class="btn btn-sm btn-green" onclick="exportSession(\''+s.session_key+'\')">Export</button></td></tr>';
+  }
+}
+
+async function loadSession(sk) {
+  try {
+    const r = await fetch(API_BASE+'/session/'+sk+'/results', {headers: {'X-LF-Key': API_KEY}});
+    const data = await r.json();
+    window.currentSessionKey = sk;  // Store for re-enrich
+    const detail = document.getElementById('sessionDetail');
+    detail.classList.remove('hidden');
+    document.getElementById('detailTitle').textContent = 'Session: '+data.session.industry+' in '+data.session.city+', '+data.session.state;
+    let html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem;"><div class="stat-card"><div class="stat-value">'+(data.companies.length||0)+'</div><div class="stat-label">Companies</div></div><div class="stat-card"><div class="stat-value">'+(data.contacts.length||0)+'</div><div class="stat-label">Contacts</div></div></div>';
+    // Add Re-Enrich All button
+    html += '<div style="margin-bottom:1rem;"><button class="btn btn-orange" onclick="reEnrichAll()">Refresh Contacts</button> <span style="color:#64748b;font-size:0.8rem;">Re-runs executive discovery for all companies</span></div>';
+    if (data.companies.length > 0) {
+      html += '<h3 style="margin-top:1rem;font-size:0.9rem;color:#94a3b8;margin-bottom:0.75rem;">Companies</h3><div class="table-wrap"><table><thead><tr><th>Name</th><th>City</th><th>State</th><th>Type</th><th>Contacts</th><th>Actions</th></tr></thead><tbody>';
+      const ctMap = {};
+      for (const ct of data.contacts) { const cid = ct.company_id||0; ctMap[cid] = (ctMap[cid]||0)+1; }
+      for (const c of data.companies) {
+        // Prefer server-provided contact_count (Issue #1); fall back to client map
+        const ctCount = (c.contact_count !== undefined) ? c.contact_count : (ctMap[c.id]||0);
+        const reBtn = '<button class="btn btn-sm btn-orange" onclick="reEnrichCompany(\''+c.place_id+'\', \''+c.name.replace(/'/g,"\\'")+'\', '+ctCount+')" title="Re-discover executives">Refresh</button>';
+        // Issue #1: show count on button + confirm before re-running when contacts exist
+        const fcBtn = (ctCount > 0)
+          ? '<button class="btn btn-sm btn-amber" onclick="findContacts(\''+c.place_id+'\', \''+c.name.replace(/'/g,"\\'")+'\', '+ctCount+')" title="'+ctCount+' contacts already found — click to re-discover">Find Contacts ('+ctCount+')</button>'
+          : '<button class="btn btn-sm btn-green" onclick="findContacts(\''+c.place_id+'\', \''+c.name.replace(/'/g,"\\'")+'\', 0)" title="Find contacts (initial discovery)">Find Contacts</button>';
+        html += '<tr><td style="font-weight:600;">'+c.name+'</td><td>'+(c.city||'')+'</td><td>'+c.state+'</td><td>'+(c.business_type||'')+'</td><td>'+ctCount+'</td><td>'+reBtn+' '+fcBtn+'</td></tr>';
+      }
+      html += '</tbody></table></div>';
+    }
+    if (data.contacts.length > 0) {
+      html += '<h3 style="margin-top:1.5rem;font-size:0.9rem;color:#94a3b8;margin-bottom:0.75rem;">Contacts</h3><div class="table-wrap"><table><thead><tr><th>Name</th><th>Title</th><th>Company</th><th>Local</th><th>Confidence</th></tr></thead><tbody>';
+      for (const ct of data.contacts) {
+        const badge = ct.is_local ? '<span class="badge badge-local">LOCAL</span>' : '<span class="badge badge-hq">HQ</span>';
+        html += '<tr><td>'+ct.full_name+'</td><td>'+(ct.title||'-')+'</td><td>'+(ct.company_name||'')+'</td><td>'+badge+'</td><td>'+((ct.confidence_score||0)*100).toFixed(0)+'%</td></tr>';
+      }
+      html += '</tbody></table></div>';
+    }
+    document.getElementById('detailContent').innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+function exportSession(sk) {
+  window.open(API_BASE+'/export/contacts/'+sk, '_blank');
+}
+
+async function resumeSession(sk) {
+  const r = await fetch(API_BASE+'/session/'+sk+'/resume', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-LF-Key':API_KEY}
+  });
+  if (r.ok) {
+    const d = await r.json();
+    // Navigate to the search page with the session loaded (fixes Issue #4)
+    // The search page reads ?session=KEY and auto-loads the results.
+    const target = d.redirect_url || ('/?session='+sk);
+    window.location.href = target;
+  } else {
+    alert('Failed to resume session');
+  }
+}
+
+async function reEnrichCompany(placeId, companyName, existingCount) {
+  // Issue #1: confirm before re-running if contacts already exist
+  let prompt = 'Re-discover executives for '+companyName+'?\n\nThis will re-run the enrichment pipeline.';
+  if (existingCount && existingCount > 0) {
+    prompt = companyName + ' already has ' + existingCount + ' contacts.\n\nRe-discover executives? Existing contacts are kept.';
+  }
+  if (!confirm(prompt)) return;
+  try {
+    const r = await fetch(API_BASE+'/discover/'+placeId+'/executives', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
+      body: JSON.stringify({})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      alert('Found '+d.count+' contacts for '+companyName);
+      if (window.currentSessionKey) loadSession(window.currentSessionKey);
+    } else {
+      alert('Re-enrichment for "'+companyName+'" failed:\n'+(d.detail||JSON.stringify(d)||'unknown error'));
+    }
+  } catch(e) {
+    alert('Network error re-enriching "'+companyName+'":\n'+e.message);
+  }
+}
+
+async function findContacts(placeId, companyName, existingCount) {
+  // Issue #1: confirm before re-running if contacts already exist
+  if (existingCount && existingCount > 0) {
+    const ok = confirm(companyName + ' already has ' + existingCount + ' contacts.\n\nRun the discovery pipeline again? Existing contacts are kept; new ones may be added.');
+    if (!ok) return;
+  } else {
+    if (!confirm('Find contacts for '+companyName+'?\n\nThis runs the full discovery pipeline.')) return;
+  }
+  const r = await fetch(API_BASE+'/discover/'+placeId+'/executives', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
+    body: JSON.stringify({})
+  });
+  const d = await r.json();
+  if (r.ok) {
+    alert('Found '+(d.count||0)+' contacts for '+companyName);
+    if (window.currentSessionKey) loadSession(window.currentSessionKey);
+  } else {
+    alert('Discovery failed: '+(d.detail||'unknown error'));
+  }
+}
+
+async function reEnrichAll() {
+  if (!window.currentSessionKey) { alert('No session loaded'); return; }
+  if (!confirm('Re-discover executives for ALL companies in this session?')) return;
+  // Fetch session companies
+  const r = await fetch(API_BASE+'/session/'+window.currentSessionKey+'/results', {headers: {'X-LF-Key': API_KEY}});
+  const d = await r.json();
+  let enriched = 0;
+  for (const c of (d.companies||[])) {
+    try {
+      const rr = await fetch(API_BASE+'/discover/'+c.place_id+'/executives', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
+        body: JSON.stringify({})
+      });
+      if (rr.ok) enriched++;
+    } catch(e) {}
+  }
+  alert('Re-enriched '+enriched+'/'+d.companies.length+' companies');
+  loadSession(window.currentSessionKey);
+}
+
+loadStats();
+loadSessions();
+</script>
+</body>
+</html>

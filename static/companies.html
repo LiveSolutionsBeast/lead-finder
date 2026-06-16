@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Lead Finder - Companies</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f172a'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-weight='800' font-size='32' fill='%2338bdf8'%3ELS%3C/text%3E%3C/svg%3E"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#f1f5f9;min-height:100vh}
+.app{max-width:1400px;margin:0 auto;padding:1.5rem 2rem}
+.nav{display:flex;gap:0.5rem;margin-bottom:2rem;flex-wrap:wrap}
+.nav a{padding:0.6rem 1.2rem;background:#1e293b;color:#94a3b8;text-decoration:none;border-radius:6px;font-size:0.9rem;transition:all 0.2s}
+.nav a:hover,.nav a.active{background:#38bdf8;color:#0f172a;font-weight:600}
+.card{background:#1e293b;border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem}
+.card h2{font-size:1rem;color:#94a3b8;margin-bottom:1rem;text-transform:uppercase;letter-spacing:0.05em}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:0.75rem;margin-bottom:1rem}
+.stat-card{background:#1e293b;border-radius:8px;padding:0.8rem;text-align:center}
+.stat-value{font-size:1.5rem;font-weight:700;color:#38bdf8}
+.stat-label{font-size:0.7rem;color:#64748b;text-transform:uppercase;margin-top:0.2rem}
+.filter-row{display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem}
+input,select{padding:0.6rem 1rem;background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:6px;font-size:0.9rem;min-width:160px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+.btn{padding:0.6rem 1.4rem;background:#38bdf8;color:#0f172a;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer}
+.btn-sm{padding:0.4rem 0.8rem;font-size:0.8rem}
+.btn-green{background:#22c55e;color:#0f172a}
+.btn-orange{background:#f59e0b;color:#0f172a}
+.btn-red{background:#ef4444;color:#fff}
+.btn-amber{background:#f59e0b;color:#0f172a}
+.btn-slate{background:#334155;color:#94a3b8}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:auto}
+th{text-align:left;padding:0.5rem 0.6rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.7rem;text-transform:uppercase;white-space:nowrap}
+td{padding:0.5rem 0.6rem;border-bottom:1px solid #1e293b;vertical-align:middle}
+tr:hover td{background:#1e293b}
+.pattern-badge{display:inline-block;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pattern-badge-yes{background:#22c55e33;color:#22c55e}
+.pattern-badge-no{background:#334155;color:#94a3b8}
+.action-group{display:flex;gap:0.2rem;flex-wrap:wrap;align-items:center}
+.action-group .btn-sm{padding:0.2rem 0.4rem;font-size:0.65rem;white-space:nowrap}
+.toggle-label{display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;color:#94a3b8;cursor:pointer;user-select:none}
+.toggle-label input{accent-color:#38bdf8}
+tr.deleted-row{opacity:0.5}
+tr.deleted-row td{text-decoration:line-through;color:#64748b}
+.trash-icon{cursor:pointer;font-size:0.75rem}
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:1000}
+.modal-overlay.active{display:flex}
+.modal{background:#1e293b;border-radius:10px;padding:2rem;width:90%;max-width:500px;max-height:90vh;overflow-y:auto}
+.modal h3{margin-bottom:1rem;color:#f1f5f9}
+.modal-row{margin-bottom:1rem}
+.modal-row label{display:block;font-size:0.8rem;color:#94a3b8;margin-bottom:0.3rem}
+.modal-row input,.modal-row select{width:100%;padding:0.6rem 1rem;background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:6px;font-size:0.9rem}
+.modal-row input:focus,.modal-row select:focus{outline:none;border-color:#38bdf8}
+.modal-actions{display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.5rem}
+.toast{position:fixed;bottom:2rem;right:2rem;padding:1rem 1.5rem;border-radius:8px;z-index:2000;color:#fff;font-weight:600;animation:slideIn 0.2s}
+.toast-success{background:#22c55e}
+.toast-error{background:#ef4444}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="nav">
+<a href="/finder/">Search</a>
+<a href="/finder/sessions">Sessions</a>
+<a href="/finder/companies" class="active">Companies</a>
+<a href="/finder/contacts">Contacts</a>
+<a href="/finder/emails">&#9993; Email Validation</a>
+<a href="/finder/audit">Audit</a>
+<span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;font-size:0.8rem;">
+  <span style="color:#22c55e;">P1-P5 ✓</span>
+  <span style="background:#22c55e33;color:#22c55e;padding:0.3rem 0.6rem;border-radius:4px;font-weight:600;" title="AI Enrichment enabled (added 2026-06-06)">QC-10 AI ✓</span>
+</span>
+</div>
+
+<div class="stats-grid">
+<div class="stat-card"><div class="stat-value" id="statCompanies">-</div><div class="stat-label">Companies</div></div>
+<div class="stat-card"><div class="stat-value" id="statContacts">-</div><div class="stat-label">Contacts</div></div>
+<div class="stat-card"><div class="stat-value" id="statSessions">-</div><div class="stat-label">Sessions</div></div>
+</div>
+
+<div class="card">
+<h2>Companies</h2>
+<div class="filter-row">
+<label style="font-size:0.8rem;color:#94a3b8;">Industry: <select id="filterIndustry" onchange="loadCompanies()"><option value="">All Industries</option></select></label>
+<label style="font-size:0.8rem;color:#94a3b8;">City: <select id="filterCity" onchange="loadCompanies()"><option value="">All Cities</option></select></label>
+<label style="font-size:0.8rem;color:#94a3b8;">State: <select id="filterState"><option value="">All States</option><option value="CA">CA</option></select></label>
+<button class="btn" id="filterBtn">Filter</button>
+<label class="toggle-label"><input type="checkbox" id="showDeleted" /> Show Deleted</label>
+</div>
+<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+<label style="font-size:0.8rem;color:#94a3b8;">Per page: <select id="perPage" onchange="loadCompanies()">
+<option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option>
+</select></label>
+<span style="color:#94a3b8;font-size:0.8rem;" id="pageInfo"></span>
+</div>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Name</th><th>City</th><th>State</th><th>Type</th><th>Website</th><th>Email Pattern</th><th>Contacts</th><th>Actions</th></tr></thead>
+<tbody id="companiesTable"></tbody>
+</table>
+</div>
+</div>
+
+</div>
+
+<!-- Pattern Edit Modal -->
+<div class="modal-overlay" id="patternModal">
+<div class="modal">
+<h3>Edit Email Pattern &mdash; <span id="patCompanyName"></span></h3>
+<div class="modal-row">
+<label>Current Pattern</label>
+<div id="patCurrent" style="color:#94a3b8;font-size:0.9rem;"></div>
+</div>
+<div class="modal-row">
+<label>New Pattern (e.g. {first}.{last}@domain.com)</label>
+<input id="patInput" type="text" placeholder="{first}.{last}@example.com" />
+</div>
+<div class="modal-row">
+<label>Source</label>
+<select id="patSource">
+<option value="manual">Manual Entry</option>
+<option value="validated">Validated via Search</option>
+<option value="guessed">Guessed</option>
+</select>
+</div>
+<div class="modal-actions">
+<button class="btn btn-orange btn-sm" id="patCancelBtn">Cancel</button>
+<button class="btn btn-sm" id="patSaveBtn">Save &amp; Validate</button>
+</div>
+</div>
+</div>
+
+<script>
+const API_BASE = '/api';
+const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
+
+// State
+let companiesData = [];
+let currentPatternCompanyId = null;
+let currentPatternCompany = null;
+
+// Helpers
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function showToast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + (type === 'success' ? 'success' : 'error');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function extractDomain(url) {
+  if (!url) return '';
+  try {
+    let u = url.trim();
+    if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+    const parsed = new URL(u);
+    return parsed.hostname.replace(/^www\./, '');
+  } catch(e) {
+    const m = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\?#]+)/i);
+    return m ? m[1] : url;
+  }
+}
+
+async function loadStats() {
+  try {
+    const r = await fetch(API_BASE+'/stats', {headers: {'X-LF-Key': API_KEY}});
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('statCompanies').textContent = d.companies || 0;
+    document.getElementById('statContacts').textContent = d.contacts || 0;
+    document.getElementById('statSessions').textContent = d.sessions || 0;
+  } catch(e) { console.error('stats error:', e); }
+}
+
+async function loadCompanyDropdowns() {
+  try {
+    const r = await fetch(API_BASE+'/companies/dropdowns', {headers: {'X-LF-Key': API_KEY}});
+    if (!r.ok) return;
+    const d = await r.json();
+    const indSel = document.getElementById('filterIndustry');
+    indSel.innerHTML = '<option value="">All Industries</option>' +
+      (d.industries||[]).map(v => '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>').join('');
+    const citySel = document.getElementById('filterCity');
+    citySel.innerHTML = '<option value="">All Cities</option>' +
+      (d.cities||[]).map(v => '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>').join('');
+    const stateSel = document.getElementById('filterState');
+    stateSel.innerHTML = '<option value="">All States</option>' +
+      (d.states||[]).map(v => '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>').join('');
+  } catch(e) { console.error('dropdowns error:', e); }
+}
+
+function renderRow(c) {
+  const tr = document.createElement('tr');
+  tr.dataset.companyId = c.id;
+  tr.dataset.companyJson = JSON.stringify(c);
+  if (c.is_deleted) tr.classList.add('deleted-row');
+
+  // Pattern cell
+  const patternCell = document.createElement('td');
+  if (c.email_pattern) {
+    const badge = document.createElement('span');
+    badge.className = 'pattern-badge pattern-badge-yes';
+    badge.textContent = '✓ ' + c.email_pattern;
+    badge.title = c.email_pattern_source || 'discovered';
+    patternCell.appendChild(badge);
+  } else {
+    const badge = document.createElement('span');
+    badge.className = 'pattern-badge pattern-badge-no';
+    badge.textContent = '— none —';
+    patternCell.appendChild(badge);
+  }
+
+  // Action cell
+  const actionCell = document.createElement('td');
+  const ag = document.createElement('div');
+  ag.className = 'action-group';
+
+  // Pattern buttons
+  if (c.email_pattern) {
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-sm btn-orange';
+    editBtn.textContent = '✏️';
+    editBtn.title = 'Edit/validate pattern';
+    editBtn.dataset.action = 'edit-pattern';
+    ag.appendChild(editBtn);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'btn btn-sm btn-red';
+    clearBtn.textContent = '🗑️';
+    clearBtn.title = 'Clear pattern';
+    clearBtn.dataset.action = 'clear-pattern';
+    ag.appendChild(clearBtn);
+  } else {
+    const discoverBtn = document.createElement('button');
+    discoverBtn.className = 'btn btn-sm btn-slate';
+    discoverBtn.textContent = 'Discover';
+    discoverBtn.dataset.action = 'discover-pattern';
+    ag.appendChild(discoverBtn);
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-sm btn-orange';
+    editBtn.textContent = '✏️';
+    editBtn.title = 'Enter pattern manually';
+    editBtn.dataset.action = 'edit-pattern';
+    ag.appendChild(editBtn);
+  }
+
+  // Contact actions
+  const findBtn = document.createElement('button');
+  findBtn.className = 'btn btn-sm btn-green';
+  findBtn.textContent = 'Find Contacts';
+  findBtn.dataset.action = 'find-contacts';
+  ag.appendChild(findBtn);
+
+  const getBtn = document.createElement('button');
+  getBtn.className = 'btn btn-sm';
+  getBtn.style.background = '#38bdf8';
+  getBtn.textContent = 'Get Emails';
+  getBtn.dataset.action = 'get-emails';
+  ag.appendChild(getBtn);
+
+  const exportBtn = document.createElement('button');
+  exportBtn.className = 'btn btn-sm btn-amber';
+  exportBtn.textContent = 'Export Patterns';
+  exportBtn.dataset.action = 'export-patterns';
+  ag.appendChild(exportBtn);
+
+  // Soft-delete / undelete button
+  if (c.is_deleted) {
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'btn btn-sm btn-green';
+    restoreBtn.textContent = '♻️';
+    restoreBtn.title = 'Restore (undelete)';
+    restoreBtn.dataset.action = 'undelete-company';
+    ag.appendChild(restoreBtn);
+  } else {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn btn-sm btn-red';
+    deleteBtn.textContent = '🗑';
+    deleteBtn.title = 'Soft-delete company';
+    deleteBtn.dataset.action = 'delete-company';
+    ag.appendChild(deleteBtn);
+  }
+
+  actionCell.appendChild(ag);
+
+  // Build row
+  tr.innerHTML =
+    '<td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(c.name) + '">' + escapeHtml(c.name) + '</td>' +
+    '<td style="white-space:nowrap;">' + escapeHtml(c.city || '') + '</td>' +
+    '<td style="white-space:nowrap;">' + escapeHtml(c.state || '') + '</td>' +
+    '<td style="white-space:nowrap;">' + escapeHtml(c.business_type || '') + '</td>' +
+    '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.website ? '<a href="' + escapeHtml(c.website) + '" target="_blank" title="' + escapeHtml(c.website) + '" style="color:#38bdf8;">' + escapeHtml(extractDomain(c.website)) + '</a>' : '<span style="color:#ef4444;font-size:0.7rem;">missing</span>') + '</td>';
+  tr.appendChild(patternCell);
+  tr.innerHTML += '<td style="text-align:center;white-space:nowrap;">' + (c.contact_count || 0) + '</td>';
+  tr.appendChild(actionCell);
+
+  return tr;
+}
+
+async function loadCompanies() {
+  const industry = document.getElementById('filterIndustry').value.trim();
+  const city = document.getElementById('filterCity').value.trim();
+  const state = document.getElementById('filterState').value;
+  const showDeleted = document.getElementById('showDeleted').checked;
+  const perPage = parseInt(document.getElementById('perPage').value) || 20;
+  let url = API_BASE + '/companies?limit=' + perPage;
+  if (industry) url += '&industry=' + encodeURIComponent(industry);
+  if (city) url += '&city=' + encodeURIComponent(city);
+  if (state) url += '&state=' + encodeURIComponent(state);
+  if (showDeleted) url += '&include_deleted=true';
+  try {
+    document.getElementById('pageInfo').textContent = 'Per page: ' + perPage;
+    const r = await fetch(url, {headers: {'X-LF-Key': API_KEY}});
+    const data = await r.json();
+    const tbody = document.getElementById('companiesTable');
+    tbody.innerHTML = '';
+    companiesData = data.companies || [];
+    for (const c of companiesData) {
+      tbody.appendChild(renderRow(c));
+    }
+    if (companiesData.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:2rem;">No companies found. Try adjusting your filters.</td></tr>';
+    }
+  } catch(e) {
+    console.error('loadCompanies error:', e);
+    showToast('Failed to load companies: ' + e.message, 'error');
+  }
+}
+
+// Event delegation on table
+document.getElementById('companiesTable').addEventListener('click', async function(ev) {
+  const btn = ev.target.closest('button[data-action]');
+  if (!btn) return;
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  const company = JSON.parse(tr.dataset.companyJson);
+
+  switch (btn.dataset.action) {
+    case 'edit-pattern': {
+      currentPatternCompanyId = company.id;
+      currentPatternCompany = company;
+      document.getElementById('patternModal').classList.add('active');
+      document.getElementById('patCompanyName').textContent = company.name;
+      document.getElementById('patCurrent').textContent = company.email_pattern || 'None';
+      document.getElementById('patInput').value = company.email_pattern || '';
+      document.getElementById('patSource').value = company.email_pattern_source || 'manual';
+      break;
+    }
+    case 'clear-pattern': {
+      if (!confirm('Clear email pattern for ' + company.name + '?')) return;
+      const r = await fetch(API_BASE + '/company/' + company.id, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+        body: JSON.stringify({email_pattern: null, email_pattern_source: 'cleared', email_pattern_confidence: 0.0})
+      });
+      if (r.ok) {
+        showToast('Pattern cleared', 'success');
+        loadCompanies();
+      } else {
+        showToast('Failed to clear pattern', 'error');
+      }
+      break;
+    }
+    case 'discover-pattern': {
+      btn.disabled = true;
+      btn.textContent = 'Searching...';
+      try {
+        const r = await fetch(API_BASE + '/company/' + company.id + '/discover-email-pattern', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+          body: JSON.stringify({})
+        });
+        const d = await r.json();
+        if (d.status === 'discovered' || d.status === 'derived') {
+          showToast('Pattern: ' + d.pattern, 'success');
+          loadCompanies();
+        } else {
+          showToast('Pattern discovery failed: ' + (d.detail || d.status), 'error');
+          btn.disabled = false;
+          btn.textContent = 'Discover';
+        }
+      } catch(e) {
+        showToast('Discovery error: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Discover';
+      }
+      break;
+    }
+    case 'find-contacts': {
+      if (!company.place_id) {
+        showToast('No place_id for this company yet. Run a search first.', 'error');
+        return;
+      }
+      if (!confirm('Find contacts for ' + company.name + '?\n\nThis runs the full discovery pipeline.')) return;
+      btn.disabled = true;
+      btn.textContent = 'Searching...';
+      try {
+        const r = await fetch(API_BASE + '/discover/' + company.place_id + '/executives', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+          body: JSON.stringify({})
+        });
+        const d = await r.json();
+        if (r.ok) {
+          showToast('Found ' + (d.count || 0) + ' contacts for ' + company.name, 'success');
+          loadCompanies();
+        } else {
+          showToast('Discovery failed: ' + (d.detail || 'unknown'), 'error');
+          btn.disabled = false;
+          btn.textContent = 'Find Contacts';
+        }
+      } catch(e) {
+        showToast('Discovery error: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Find Contacts';
+      }
+      break;
+    }
+    case 'get-emails': {
+      btn.disabled = true;
+      btn.textContent = 'Deriving...';
+      try {
+        const r = await fetch(API_BASE + '/company/' + company.id + '/derive-emails', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+          body: JSON.stringify({})
+        });
+        const d = await r.json();
+        if (d.status === 'derived') {
+          showToast('Derived ' + d.emails_derived + ' emails', 'success');
+          loadCompanies();
+        } else {
+          showToast('Email derivation failed: ' + (d.detail || d.status), 'error');
+          btn.disabled = false;
+          btn.textContent = 'Get Emails';
+        }
+      } catch(e) {
+        showToast('Derivation error: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Get Emails';
+      }
+      break;
+    }
+    case 'export-patterns': {
+      window.open(API_BASE + '/company/' + company.id + '/email-patterns', '_blank');
+      showToast('Exporting patterns for ' + company.name, 'success');
+      break;
+    }
+    case 'delete-company': {
+      if (!confirm('Soft-delete "' + company.name + '"?\n\nIt will be hidden from this list but can be restored.')) return;
+      try {
+        const r = await fetch(API_BASE + '/company/' + company.id, {
+          method: 'DELETE',
+          headers: {'X-LF-Key': API_KEY}
+        });
+        if (r.ok) {
+          showToast(company.name + ' deleted', 'success');
+          // Immediate row removal
+          tr.style.transition = 'opacity 0.3s';
+          tr.style.opacity = '0';
+          setTimeout(() => { tr.remove(); loadCompanies(); }, 350);
+        } else {
+          const d = await r.json();
+          showToast('Delete failed: ' + (d.detail || 'unknown'), 'error');
+        }
+      } catch(e) {
+        showToast('Delete error: ' + e.message, 'error');
+      }
+      break;
+    }
+    case 'undelete-company': {
+      if (!confirm('Restore "' + company.name + '"?\n\nIt will reappear in the companies list.')) return;
+      try {
+        const r = await fetch(API_BASE + '/company/' + company.id + '/undelete', {
+          method: 'POST',
+          headers: {'X-LF-Key': API_KEY}
+        });
+        if (r.ok) {
+          showToast(company.name + ' restored', 'success');
+          // Immediate row removal + reload
+          tr.style.transition = 'opacity 0.3s';
+          tr.style.opacity = '0';
+          setTimeout(() => { tr.remove(); loadCompanies(); }, 350);
+        } else {
+          const d = await r.json();
+          showToast('Restore failed: ' + (d.detail || 'unknown'), 'error');
+        }
+      } catch(e) {
+        showToast('Restore error: ' + e.message, 'error');
+      }
+      break;
+    }
+  }
+});
+
+// Modal handlers
+document.getElementById('patCancelBtn').addEventListener('click', function() {
+  document.getElementById('patternModal').classList.remove('active');
+  currentPatternCompanyId = null;
+  currentPatternCompany = null;
+});
+
+document.getElementById('patSaveBtn').addEventListener('click', async function() {
+  if (!currentPatternCompanyId) return;
+  const pattern = document.getElementById('patInput').value.trim();
+  const source = document.getElementById('patSource').value;
+  if (!pattern) {
+    showToast('Please enter a pattern', 'error');
+    return;
+  }
+  const r = await fetch(API_BASE + '/company/' + currentPatternCompanyId, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+    body: JSON.stringify({email_pattern: pattern, email_pattern_source: source, email_pattern_confidence: 1.0})
+  });
+  if (r.ok) {
+    showToast('Pattern saved and validated', 'success');
+    document.getElementById('patternModal').classList.remove('active');
+    currentPatternCompanyId = null;
+    currentPatternCompany = null;
+    loadCompanies();
+  } else {
+    showToast('Failed to save pattern', 'error');
+  }
+});
+
+// Filter button
+document.getElementById('filterBtn').addEventListener('click', loadCompanies);
+
+// Show Deleted toggle
+document.getElementById('showDeleted').addEventListener('change', loadCompanies);
+
+// Init
+loadStats();
+loadCompanyDropdowns();
+loadCompanies();
+</script>
+</body>
+</html>

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Lead Finder - Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f172a'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-weight='800' font-size='32' fill='%2338bdf8'%3ELS%3C/text%3E%3C/svg%3E"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#f1f5f9;min-height:100vh}
+.app{max-width:1100px;margin:0 auto;padding:2rem}
+.nav{display:flex;gap:0.5rem;margin-bottom:2rem;flex-wrap:wrap}
+.nav a{padding:0.6rem 1.2rem;background:#1e293b;color:#94a3b8;text-decoration:none;border-radius:6px;font-size:0.9rem;transition:all 0.2s}
+.nav a:hover,.nav a.active{background:#38bdf8;color:#0f172a;font-weight:600}
+.card{background:#1e293b;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
+.card h2{font-size:1rem;color:#94a3b8;margin-bottom:1rem;text-transform:uppercase;letter-spacing:0.05em}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:#1e293b;border-radius:10px;padding:1.2rem;text-align:center}
+.stat-value{font-size:2rem;font-weight:700;color:#38bdf8}
+.stat-label{font-size:0.8rem;color:#64748b;text-transform:uppercase;margin-top:0.3rem}
+.filter-row{display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem}
+input,select{padding:0.6rem 1rem;background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:6px;font-size:0.9rem;min-width:160px}
+input:focus,select:focus{outline:none;border-color:#38bdf8}
+.btn{padding:0.6rem 1.4rem;background:#38bdf8;color:#0f172a;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer;transition:opacity 0.2s}
+.btn:hover{opacity:0.85}
+.btn-green{background:#22c55e;color:#0f172a}
+.btn-sm{padding:0.4rem 0.8rem;font-size:0.8rem}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:0.9rem}
+th{text-align:left;padding:0.75rem 1rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.75rem;text-transform:uppercase}
+td{padding:0.75rem 1rem;border-bottom:1px solid #1e293b}
+tr:hover td{background:#1e293b}
+.badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600}
+.badge-local{background:#22c55e33;color:#22c55e}
+.badge-hq{background:#f59e0b33;color:#f59e0b}
+.badge-blue{background:#38bdf833;color:#38bdf8}
+.hidden{display:none}
+/* Instructions Menu */
+.instructions-header{display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.75rem 1rem;background:#1e293b;border-radius:8px;margin-bottom:1rem;font-weight:600;font-size:0.9rem;color:#38bdf8;transition:background 0.2s}
+.instructions-header:hover{background:#334155}
+.instructions-header::before{content:"▶";font-size:0.75rem;transition:transform 0.2s}
+.instructions-header.active::before{transform:rotate(90deg)}
+.instructions-body{display:none;padding:1rem;background:#0f172a;border-radius:8px;margin-bottom:1.5rem;font-size:0.85rem;line-height:1.6}
+.instructions-body.active{display:block}
+.instructions-body h4{color:#94a3b8;margin-top:0.75rem;margin-bottom:0.3rem;font-size:0.85rem}
+.instructions-body p{color:#94a3b8;margin-bottom:0.5rem}
+.instructions-body ol{margin-left:1.2rem;color:#94a3b8}
+.instructions-body li{margin-bottom:0.3rem}
+.msg{padding:0.75rem 1rem;border-radius:6px;margin-bottom:1rem;font-size:0.9rem}
+.msg-info{background:#38bdf833;color:#38bdf8}
+.msg-error{background:#ef444433;color:#ef4444}
+.msg-success{background:#22c55e33;color:#22c55e}
+.progress-bar{height:4px;background:#334155;border-radius:2px;overflow:hidden;margin-top:0.5rem}
+.progress-fill{height:100%;background:#38bdf8;transition:width 0.3s}
+.results-list{max-height:400px;overflow-y:auto}
+.result-item{display:flex;justify-content:space-between;align-items:center;padding:0.75rem;border-bottom:1px solid #334155;gap:1rem}
+.result-item:last-child{border-bottom:none}
+.result-info{flex:1;min-width:0}
+.result-name{font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.result-meta{font-size:0.8rem;color:#64748b;margin-top:0.2rem}
+.result-actions{display:flex;gap:0.5rem;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="nav">
+<a href="/finder/" class="active">Search</a>
+<a href="/finder/sessions">Sessions</a>
+<a href="/finder/companies">Companies</a>
+<a href="/finder/contacts">Contacts</a>
+<a href="/finder/emails">&#9993; Email Validation</a>
+<a href="/finder/audit">Audit</a>
+<span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;font-size:0.8rem;">
+  <span style="color:#22c55e;">P1-P5 ✓</span>
+  <span style="background:#22c55e33;color:#22c55e;padding:0.3rem 0.6rem;border-radius:4px;font-weight:600;" title="AI Enrichment enabled (added 2026-06-06)">QC-10 AI ✓</span>
+</span>
+</div>
+
+<div class="instructions-header" id="instructionsHeader" onclick="toggleInstructions()">
+How to Use Lead Finder
+</div>
+<div class="instructions-body" id="instructionsBody">
+<p>Lead Finder helps you discover companies by industry and location, then find executive contacts with verified email patterns.</p>
+<h4>1. Search</h4>
+<ol>
+<li>Enter an <strong>industry</strong> (e.g. "aerospace", "healthcare", "manufacturing")</li>
+<li>Enter a <strong>city</strong> in California (e.g. "Long Beach", "Los Angeles")</li>
+<li>Adjust <strong>radius</strong> (default 15 miles) and <strong>max results</strong></li>
+<li>Click <strong>Search</strong> to find companies via Google Places</li>
+</ol>
+<h4>2. Enrich Contacts</h4>
+<ol>
+<li>In the results, click <strong>Find Contacts</strong> on any company</li>
+<li>The system discovers executives via web scraping + LinkedIn search</li>
+<li>Contacts are validated before being saved to the database</li>
+</ol>
+<h4>3. Discover Email Patterns</h4>
+<ol>
+<li>Go to <strong>Companies</strong> tab and click <strong>Discover</strong> to search for the company's email pattern</li>
+<li>Or click <strong>✏️ Edit</strong> to manually enter a validated pattern (e.g. <code>{first}.{last}@boeing.com</code>)</li>
+<li>Mark source as "Validated via Search" or "Manual Entry"</li>
+</ol>
+<h4>4. Export & Use</h4>
+<ol>
+<li>Click <strong>Get Emails</strong> to derive emails for all contacts using the known pattern</li>
+<li>Click <strong>Export Patterns</strong> to download a per-company CSV with all 21 pattern variations</li>
+<li>When pattern is known, the export shows a single validated email per contact</li>
+<li>When unknown, the export shows all 21 variations for manual validation</li>
+</ol>
+<h4>5. Browse & Manage</h4>
+<ol>
+<li><strong>Sessions</strong> — view all past searches and re-enrich stale data</li>
+<li><strong>Companies</strong> — browse all discovered companies, filter by industry/city</li>
+<li><strong>Contacts</strong> — view and edit individual contacts, soft-delete irrelevant ones</li>
+<li><strong>Audit</strong> — quality report showing contacts with missing data</li>
+</ol>
+</div>
+
+<div class="stats-grid">
+<div class="stat-card"><div class="stat-value" id="statCompanies">-</div><div class="stat-label">Companies</div></div>
+<div class="stat-card"><div class="stat-value" id="statContacts">-</div><div class="stat-label">Contacts</div></div>
+<div class="stat-card"><div class="stat-value" id="statSessions">-</div><div class="stat-label">Sessions</div></div>
+<div class="stat-card" style="border-left:4px solid #f59e0b;" title="AI enrichment stats (added 2026-06-06)">
+  <div class="stat-value" id="statAICalls">-</div>
+  <div class="stat-label">AI Calls <span id="aiEnabledIndicator" style="color:#22c55e;font-size:0.7rem;">●</span></div>
+</div>
+</div>
+
+<div class="card">
+<h2>New Search</h2>
+<div class="filter-row">
+<input id="industry" placeholder="Industry (e.g. aerospace, healthcare)" value="aerospace machine shop" />
+<input id="city" placeholder="City" value="Long Beach" />
+<select id="state"><option value="CA" selected>CA</option></select>
+<select id="radius"><option value="10">10 mi</option><option value="15" selected>15 mi</option><option value="25">25 mi</option><option value="50">50 mi</option></select>
+<select id="maxResults"><option value="10">10 results</option><option value="20" selected>20 results</option><option value="50">50 results</option></select>
+</div>
+<div class="filter-row" style="margin-top:0.5rem;">
+<label style="font-size:0.75rem;color:#94a3b8;">Min Rating: <select id="minRating"><option value="0">Any</option><option value="3">3+ ★</option><option value="3.5" selected>3.5+ ★</option><option value="4">4+ ★</option><option value="4.5">4.5+ ★</option></select></label>
+<label style="font-size:0.75rem;color:#94a3b8;">Min Reviews: <select id="minReviews"><option value="0" selected>Any</option><option value="3">3+</option><option value="10">10+</option><option value="25">25+</option><option value="50">50+</option></select></label>
+<label style="font-size:0.75rem;color:#94a3b8;"><input type="checkbox" id="requireContact" /> Require website or phone</label>
+<label style="font-size:0.75rem;color:#94a3b8;" title="Soft filter: reject results below this quality score (0-1)">Min Score: <select id="minQuality"><option value="0" selected>0</option><option value="0.3">0.3</option><option value="0.4">0.4</option><option value="0.5">0.5</option><option value="0.6">0.6</option></select></label>
+</div>
+<button class="btn" onclick="doSearch()">Search</button>
+<div id="searchProgress" class="progress-bar hidden"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+</div>
+
+<div class="card">
+<h2>Current Session</h2>
+<div id="currentSessionMsg" style="color:#64748b;margin-bottom:1rem;">No active session. Run a search to start.</div>
+<div id="sessionKeyDisplay" style="font-family:monospace;color:#38bdf8;margin-bottom:1rem;" class="hidden"></div>
+<div id="sessionActions" class="hidden">
+<button class="btn btn-green" onclick="exportSession()">Export CSV</button>
+<button class="btn" onclick="discoverAll()">Discover All Contacts</button>
+<span id="discoverAllStatus" style="color:#94a3b8;font-size:0.8rem;margin-left:0.5rem;"></span>
+</div>
+</div>
+
+<div id="discoverSection" class="card hidden">
+<h2>Find Contacts for Selected Company</h2>
+<div id="discoverMsg" style="margin-bottom:1rem;color:#64748b;"></div>
+<div id="discoverProgress" class="progress-bar hidden"><div class="progress-fill" style="width:0%"></div></div>
+<pre id="discoverResult" style="background:#0f172a;padding:1rem;border-radius:6px;font-size:0.85rem;white-space:pre-wrap;max-height:300px;overflow-y:auto;" class="hidden"></pre>
+</div>
+
+<div id="discoverAllSection" class="card hidden">
+<h2>Discovery Progress <span id="discoverAllCount" style="color:#38bdf8;"></span></h2>
+<div id="discoverAllProgress" class="progress-bar"><div id="discoverAllFill" class="progress-fill" style="width:0%"></div></div>
+<div id="discoverAllMsg" style="color:#94a3b8;font-size:0.85rem;margin-bottom:1rem;"></div>
+<div id="discoverAllStage" style="color:#38bdf8;font-size:0.85rem;margin-bottom:0.75rem;"></div>
+<div id="discoverAllResults" style="max-height:400px;overflow-y:auto;"></div>
+</div>
+
+<div id="resultsCard" class="card hidden">
+<h2>Results <span id="resultCount" style="color:#38bdf8;"></span></h2>
+<div id="msgArea"></div>
+<div class="results-list" id="resultsList"></div>
+</div>
+
+</div>
+
+<script>
+const API_BASE = '/api';
+const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
+let currentSession = null;
+let selectedPlaceId = null;
+
+// Issue #5: sessionStorage persistence so navigating to another tab and back
+// doesn't wipe the search results. Falls back to legacy page-load behavior
+// (no session) if storage is unavailable or the user has explicitly closed
+// the session.
+const SESSION_STORAGE_KEY = 'lf_current_session';
+
+function saveSessionToStorage(sk) {
+  try {
+    if (sk) sessionStorage.setItem(SESSION_STORAGE_KEY, sk);
+    else sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch(e) { /* sessionStorage unavailable */ }
+}
+
+function loadSessionFromStorage() {
+  try {
+    return sessionStorage.getItem(SESSION_STORAGE_KEY);
+  } catch(e) { return null; }
+}
+
+async function loadStats() {
+  try {
+    const [statsData, aiUsage] = await Promise.all([
+      fetch(API_BASE+'/stats', {headers: {'X-LF-Key': API_KEY}}).then(r=>r.ok ? r.json() : {companies:0, contacts:0, sessions:0}),
+      fetch(API_BASE+'/ai/usage', {headers: {'X-LF-Key': API_KEY}}).then(r=>r.ok ? r.json() : {enabled: false, usage: {}}),
+    ]);
+    document.getElementById('statCompanies').textContent = statsData.companies || 0;
+    document.getElementById('statContacts').textContent = statsData.contacts || 0;
+    document.getElementById('statSessions').textContent = statsData.sessions || 0;
+    // AI stats (added 2026-06-06)
+    const aiCalls = aiUsage.usage && aiUsage.usage.total_calls || 0;
+    document.getElementById('statAICalls').textContent = aiCalls;
+    const indicator = document.getElementById('aiEnabledIndicator');
+    if (aiUsage.enabled) {
+      indicator.textContent = '●';
+      indicator.title = 'AI enrichment enabled: ' + (aiUsage.model_chain ? aiUsage.model_chain.join(' → ') : 'unknown');
+      indicator.style.color = '#22c55e';
+    } else {
+      indicator.textContent = '○';
+      indicator.title = 'AI enrichment disabled';
+      indicator.style.color = '#94a3b8';
+    }
+  } catch(e) {}
+}
+
+async function doSearch() {
+  const industry = document.getElementById('industry').value.trim();
+  const city = document.getElementById('city').value.trim();
+  const state = document.getElementById('state').value;
+  const radius = parseInt(document.getElementById('radius').value);
+  const maxResults = parseInt(document.getElementById('maxResults').value);
+  if (!industry || !city) { showMsg('Please enter industry and city', 'error'); return; }
+
+  const minRating = parseFloat(document.getElementById('minRating').value) || 0;
+  const minReviews = parseInt(document.getElementById('minReviews').value) || 0;
+  const requireContact = document.getElementById('requireContact').checked;
+  const minQuality = parseFloat(document.getElementById('minQuality').value) || 0;
+
+  showMsg('Searching...', 'info');
+  document.getElementById('searchProgress').classList.remove('hidden');
+
+  try {
+    const r = await fetch(API_BASE+'/search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+      body: JSON.stringify({
+        industry, city, state, radius_miles: radius, max_results: maxResults,
+        min_rating: minRating, min_reviews: minReviews,
+        require_website_or_phone: requireContact, min_quality_score: minQuality,
+      })
+    });
+    const data = await r.json();
+    currentSession = data.session_key;
+    saveSessionToStorage(currentSession);
+    document.getElementById('currentSessionMsg').classList.add('hidden');
+    document.getElementById('sessionKeyDisplay').textContent = 'Session: ' + currentSession;
+    document.getElementById('sessionKeyDisplay').classList.remove('hidden');
+    document.getElementById('sessionActions').classList.remove('hidden');
+    loadStats();
+    loadResults(currentSession);
+    let msg = `Found ${data.total_found} companies`;
+    if (data.filtered_by_quality) msg += ` (${data.filtered_by_quality} filtered by quality)`;
+    if (data.filtered_by_score) msg += ` (${data.filtered_by_score} below score threshold)`;
+    showMsg(msg, 'success');
+  } catch(e) { showMsg('Search failed: '+e.message, 'error'); }
+  document.getElementById('searchProgress').classList.add('hidden');
+}
+
+async function loadResults(sk) {
+  try {
+    const r = await fetch(API_BASE+'/session/'+sk+'/results', {headers: {'X-LF-Key': API_KEY}});
+    const data = await r.json();
+    const list = document.getElementById('resultsList');
+    list.innerHTML = '';
+    document.getElementById('resultCount').textContent = '('+data.companies.length+')';
+    document.getElementById('resultsCard').classList.remove('hidden');
+    for (const c of data.companies) {
+      // Prefer the server-provided contact_count (added Issue #1) so the
+      // count is always correct even if data.contacts isn't paginated.
+      // Fall back to client-side filter for backwards compatibility.
+      const ctCount = (c.contact_count !== undefined)
+        ? c.contact_count
+        : data.contacts.filter(ct=>ct.company_id===c.id).length;
+      const badge = c.is_local_contact ? '<span class="badge badge-local">LOCAL</span>' : '<span class="badge badge-hq">HQ</span>';
+      const qs = c.quality_score || 0;
+      const grade = c.quality_grade || '?';
+      const qColor = qs >= 0.7 ? '#22c55e' : qs >= 0.4 ? '#f59e0b' : '#ef4444';
+      const qBadge = '<span style="background:'+qColor+'33;color:'+qColor+';padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;font-weight:600;margin-left:0.3rem;" title="Quality score '+qs.toFixed(2)+'">'+grade+' '+qs.toFixed(2)+'</span>';
+      list.innerHTML += '<div class="result-item">'+
+        '<div class="result-info">'+
+          '<div class="result-name">'+c.name+qBadge+'</div>'+
+          '<div class="result-meta">'+[c.city, c.state, c.business_type].filter(Boolean).join(' · ')+' · '+ctCount+' contacts'+badge+'</div>'+
+        '</div>'+
+        '<div class="result-actions">'+
+          (c.website ? '<a class="btn btn-sm" href="'+c.website+'" target="_blank">Web</a>' : '')+
+          // Issue #1: button text changes when contacts exist; confirm before re-running.
+          (function(){
+            if (ctCount > 0) {
+              return '<button class="btn btn-sm btn-amber" onclick="discoverCompany(\''+c.place_id+'\', \''+c.name.replace(/'/g,"\\'")+'\', '+ctCount+')" title="'+ctCount+' contacts already found — click to re-discover">Find Contacts ('+ctCount+')</button>';
+            }
+            return '<button class="btn btn-sm btn-green" onclick="discoverCompany(\''+c.place_id+'\', \''+c.name.replace(/'/g,"\\'")+'\', 0)">Find Contacts</button>';
+          })()+
+        '</div>'+
+      '</div>';
+    }
+  } catch(e) { showMsg('Failed to load results: '+e.message, 'error'); }
+}
+
+async function discoverCompany(placeId, name, existingCount) {
+  // Issue #1: if contacts already exist, confirm before re-running
+  if (existingCount && existingCount > 0) {
+    const ok = confirm(name + ' already has ' + existingCount + ' contacts.\n\nRun the discovery pipeline again? Existing contacts will be kept; new ones may be added.');
+    if (!ok) return;
+  }
+  selectedPlaceId = placeId;
+  document.getElementById('discoverMsg').textContent = 'Enriching '+name+' and finding contacts...';
+  document.getElementById('discoverSection').classList.remove('hidden');
+  document.getElementById('discoverResult').classList.add('hidden');
+  document.getElementById('discoverProgress').classList.remove('hidden');
+  try {
+    const er = await fetch(API_BASE+'/company/'+placeId+'/enrich', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}});
+    const edata = await er.ok ? await er.json() : {};
+    const ed = await fetch(API_BASE+'/discover/'+placeId+'/executives', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-LF-Key':API_KEY},
+      body: JSON.stringify({company_name: name, search_city: '', search_state: 'CA', search_radius_miles: 25})
+    });
+    const rdata = await ed.json();
+    document.getElementById('discoverResult').textContent = JSON.stringify(rdata, null, 2);
+    document.getElementById('discoverResult').classList.remove('hidden');
+    document.getElementById('discoverMsg').textContent = 'Found '+(rdata.count||0)+' contacts for '+name;
+    loadStats();
+    if (currentSession) loadResults(currentSession);
+  } catch(e) {
+    document.getElementById('discoverMsg').textContent = 'Error: '+e.message;
+  }
+  document.getElementById('discoverProgress').classList.add('hidden');
+}
+
+function showDiscover() {
+  document.getElementById('discoverSection').scrollIntoView({behavior:'smooth'});
+}
+
+function exportSession() {
+  if (!currentSession) return;
+  window.open(API_BASE+'/export/contacts/'+currentSession, '_blank');
+}
+
+// ── Background Discovery Job (QC-17, 2026-06-09) ─────────────────────────────
+let activeDiscoveryJobId = null;
+let discoveryPollInterval = null;
+
+async function discoverAll() {
+  if (!currentSession) { showMsg('No active session', 'error'); return; }
+  const status = document.getElementById('discoverAllStatus');
+  status.textContent = 'Starting...';
+  try {
+    const r = await fetch(API_BASE+'/discover-batch', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
+      body: JSON.stringify({session_key: currentSession})
+    });
+    const d = await r.json();
+    activeDiscoveryJobId = d.job_id;
+    status.textContent = 'Job '+d.job_id+' started - '+d.total+' companies';
+
+    document.getElementById('discoverAllSection').classList.remove('hidden');
+    document.getElementById('discoverAllCount').textContent = '('+d.total+' companies)';
+    document.getElementById('discoverAllMsg').textContent = 'Processing...';
+    document.getElementById('discoverAllResults').innerHTML = '';
+
+    // Stop previous poll if any
+    if (discoveryPollInterval) clearInterval(discoveryPollInterval);
+    // Poll every 3 seconds
+    pollDiscoverJob(d.job_id);
+    discoveryPollInterval = setInterval(() => pollDiscoverJob(d.job_id), 3000);
+  } catch(e) {
+    status.textContent = 'Error: '+e.message;
+    showMsg('Failed to start discovery: '+e.message, 'error');
+  }
+}
+
+// Issue #3: render the current enrichment stage + recent stage log timeline
+function renderDiscoveryStage(job) {
+  const stageDiv = document.getElementById('discoverAllStage');
+  if (!stageDiv) return;
+  const currentStage = job.current_stage || '';
+  const stageLog = job.stage_log || [];
+  if (!currentStage && stageLog.length === 0) {
+    stageDiv.textContent = '';
+    return;
+  }
+  // Show current stage prominently
+  let html = '';
+  if (currentStage) {
+    const stageLabels = {
+      'ai_research': 'AI researching companies',
+      'google_maps_verify': 'Verifying with Google Maps',
+      'google_maps_details': 'Fetching place details',
+      'ai_website_validation': 'AI validating websites',
+      'ai_business_type_normalize': 'AI normalizing business types',
+      'starting': 'Starting',
+      'enriching_company': 'Enriching company',
+      'discover_executives_legacy': 'Finding executives (legacy)',
+      'complete': 'Complete',
+      'failed': 'Failed',
+    };
+    const label = stageLabels[currentStage] || currentStage;
+    html += '<div>⚙️ <strong>'+label+'</strong></div>';
+  }
+  // Show the last 5 stages as a timeline
+  if (stageLog.length > 0) {
+    html += '<div style="margin-top:0.4rem;font-size:0.75rem;color:#94a3b8;">';
+    const recent = stageLog.slice(-5);
+    for (const s of recent) {
+      const icon = s.status === 'complete' ? '✅' : s.status === 'skipped' ? '⏭️' : s.status === 'failed' ? '❌' : '⏳';
+      const dur = s.duration_ms ? ' ('+s.duration_ms+'ms)' : '';
+      html += '<span style="margin-right:0.6rem;">'+icon+' '+(s.stage || '?')+dur+'</span>';
+    }
+    html += '</div>';
+  }
+  stageDiv.innerHTML = html;
+}
+
+async function pollDiscoverJob(jobId) {
+  if (!jobId) return;
+  try {
+    const r = await fetch(API_BASE+'/discover-job/'+jobId, {headers: {'X-LF-Key': API_KEY}});
+    const d = await r.json();
+    const total = d.total || 0;
+    const done = d.done || 0;
+    const failed = d.failed || 0;
+    const progress = total > 0 ? Math.round((done + failed) / total * 100) : 0;
+
+    document.getElementById('discoverAllFill').style.width = progress+'%';
+    document.getElementById('discoverAllMsg').textContent =
+      done+' done, '+failed+' failed, '+(total - done - failed)+' remaining';
+    document.getElementById('discoverAllStatus').textContent =
+      done+'/'+total+' companies ('+failed+' errors)';
+
+    // Issue #3: render the current stage + stage log timeline
+    renderDiscoveryStage(d);
+
+    // Show results
+    const resultsDiv = document.getElementById('discoverAllResults');
+    if (d.items && d.items.length > 0) {
+      let html = '';
+      for (const item of d.items) {
+        const icon = item.status === 'completed' ? '✅' : item.status === 'failed' ? '❌' : item.status === 'running' ? '⏳' : '⏸️';
+        html += '<div style="font-size:0.85rem;padding:0.3rem 0;border-bottom:1px solid #1e293b;">' +
+          icon+' '+item.company_name+
+          '<span style="color:#64748b;margin-left:0.5rem;">'+item.status+'</span></div>';
+      }
+      resultsDiv.innerHTML = html;
+    }
+
+    // Stop polling when done
+    if (d.status === 'completed' || d.status === 'completed_with_errors' || d.status === 'failed') {
+      if (discoveryPollInterval) clearInterval(discoveryPollInterval);
+      discoveryPollInterval = null;
+      const statusText = d.status === 'completed' ? '✅ All done!' : '⚠️ Completed with errors';
+      document.getElementById('discoverAllMsg').textContent = statusText+' — '+done+' succeeded, '+failed+' failed';
+      document.getElementById('discoverAllStatus').textContent = statusText;
+      // Refresh stats and results
+      loadStats();
+      if (currentSession) loadResults(currentSession);
+    }
+  } catch(e) {
+    // Silently retry on next poll
+  }
+}
+
+function showMsg(text, type) {
+  const area = document.getElementById('msgArea');
+  area.innerHTML = '<div class="msg msg-'+type+'">'+text+'</div>';
+  setTimeout(()=>area.innerHTML='', 4000);
+}
+
+function toggleInstructions() {
+  const header = document.getElementById('instructionsHeader');
+  const body = document.getElementById('instructionsBody');
+  header.classList.toggle('active');
+  body.classList.toggle('active');
+}
+
+loadStats();
+
+// On page load, check for ?session=KEY in the URL and auto-load the session.
+// This is the target of /api/session/{key}/resume's redirect_url (Issue #4).
+// Fall back to sessionStorage (Issue #5) so navigating to another tab and
+// back doesn't wipe the search results.
+(function autoLoadSessionFromURL() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    let sessionKey = params.get('session');
+    if (!sessionKey) {
+      sessionKey = loadSessionFromStorage();
+    }
+    if (!sessionKey) return;
+    // Set currentSession and load results
+    currentSession = sessionKey;
+    saveSessionToStorage(currentSession);
+    document.getElementById('currentSessionMsg').classList.add('hidden');
+    document.getElementById('sessionKeyDisplay').textContent = 'Session: ' + currentSession;
+    document.getElementById('sessionKeyDisplay').classList.remove('hidden');
+    document.getElementById('sessionActions').classList.remove('hidden');
+    showMsg('Resumed session ' + currentSession, 'info');
+    loadResults(currentSession);
+    // Clean the URL so a refresh doesn't re-trigger (replace, not push)
+    const clean = window.location.pathname;
+    window.history.replaceState({}, '', clean);
+  } catch(e) { console.error('autoLoadSessionFromURL failed:', e); }
+})();
+</script>
+</body>
+</html>

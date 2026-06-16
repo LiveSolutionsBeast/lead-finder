@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Lead Finder - Audit</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f172a'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-weight='800' font-size='32' fill='%2338bdf8'%3ELS%3C/text%3E%3C/svg%3E"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#f1f5f9;min-height:100vh}
+.app{max-width:1200px;margin:0 auto;padding:2rem}
+.nav{display:flex;gap:0.5rem;margin-bottom:2rem;flex-wrap:wrap}
+.nav a{padding:0.6rem 1.2rem;background:#1e293b;color:#94a3b8;text-decoration:none;border-radius:6px;font-size:0.9rem;transition:all 0.2s}
+.nav a:hover,.nav a.active{background:#38bdf8;color:#0f172a;font-weight:600}
+.card{background:#1e293b;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
+.card h2{font-size:1rem;color:#94a3b8;margin-bottom:1rem;text-transform:uppercase;letter-spacing:0.05em}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:#1e293b;border-radius:10px;padding:1.2rem;text-align:center;border-left:4px solid #38bdf8}
+.stat-value{font-size:2rem;font-weight:700;color:#38bdf8}
+.stat-label{font-size:0.8rem;color:#64748b;text-transform:uppercase;margin-top:0.3rem}
+.stat-card.warning{border-left-color:#f59e0b}
+.stat-card.error{border-left-color:#ef4444}
+.stat-card.success{border-left-color:#22c55e}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:0.9rem}
+th{text-align:left;padding:0.75rem 1rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.75rem;text-transform:uppercase}
+td{padding:0.75rem 1rem;border-bottom:1px solid #1e293b}
+tr:hover td{background:#1e293b}
+.badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600}
+.badge-red{background:#ef444433;color:#ef4444}
+.badge-yellow{background:#f59e0b33;color:#f59e0b}
+.badge-green{background:#22c55e33;color:#22c55e}
+.empty-msg{text-align:center;color:#94a3b8;padding:2rem;font-style:italic}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="nav">
+<a href="/finder/">Search</a>
+<a href="/finder/sessions">Sessions</a>
+<a href="/finder/companies">Companies</a>
+<a href="/finder/contacts">Contacts</a>
+<a href="/finder/emails">&#9993; Email Validation</a>
+  <a href="/finder/audit" class="active">Audit</a>
+<span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;font-size:0.8rem;">
+  <span style="color:#22c55e;">P1-P5 ✓</span>
+  <span style="background:#22c55e33;color:#22c55e;padding:0.3rem 0.6rem;border-radius:4px;font-weight:600;" title="AI Enrichment enabled (added 2026-06-06)">QC-10 AI ✓</span>
+</span>
+</div>
+
+<div class="stats-grid" id="auditStats"></div>
+
+<div class="card">
+<h2>Actions</h2>
+<div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+<button class="btn btn-orange" onclick="backfillWebsites()">Backfill Missing Websites</button>
+<button class="btn" onclick="loadAudit()">Refresh Audit</button>
+<span style="color:#94a3b8;font-size:0.8rem;align-self:center;" id="actionInfo"></span>
+</div>
+</div>
+
+<div class="card">
+<h2>Contacts With No Titles</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Name</th><th>Company</th><th>City</th><th>Confidence</th><th>LinkedIn</th><th>Actions</th></tr></thead>
+<tbody id="noTitleTable"></tbody>
+</table>
+</div>
+</div>
+
+<div class="card">
+<h2>Low Confidence Contacts (&lt; 0.6)</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Name</th><th>Title</th><th>Company</th><th>Confidence</th><th>LinkedIn</th><th>Actions</th></tr></thead>
+<tbody id="lowConfTable"></tbody>
+</table>
+</div>
+</div>
+
+<div class="card">
+<h2>Companies Without Email Patterns</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Company</th><th>City</th><th>Contacts</th><th>Website</th><th>Domain</th><th>Actions</th></tr></thead>
+<tbody id="noPatternTable"></tbody>
+</table>
+</div>
+</div>
+
+<div class="card">
+<h2>Website &amp; Domain Quality</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Company</th><th>City</th><th>Website</th><th>Domain</th><th>Status</th><th>Actions</th></tr></thead>
+<tbody id="websiteQualityTable"></tbody>
+</table>
+</div>
+</div>
+
+</div>
+
+<script>
+const API_BASE = '/api';
+const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function emptyRow(tbody, colspan, msg) {
+  tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="empty-msg">' + escapeHtml(msg) + '</td></tr>';
+}
+
+function extractDomain(url) {
+  if (!url) return '';
+  try {
+    let u = url.trim();
+    if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+    const parsed = new URL(u);
+    return parsed.hostname.replace(/^www\./, '');
+  } catch(e) {
+    const m = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\?#]+)/i);
+    return m ? m[1] : url;
+  }
+}
+
+function contactActions(ct) {
+  const li = ct.linkedin_url ? '<a href="'+escapeHtml(ct.linkedin_url)+'" target="_blank" style="color:#38bdf8;text-decoration:none;" title="'+escapeHtml(ct.linkedin_url)+'">&#x1F517;</a>' : '<span style="color:#64748b;">—</span>';
+  const editBtn = '<button class="btn-sm btn-green" onclick="window.open(\'/finder/contacts\',\'_blank\')" title="Edit in Contacts page">&#9998;</button>';
+  const delBtn = '<button class="btn-sm btn-red" onclick="deleteContactFromAudit('+ct.id+',\''+escapeHtml(ct.full_name).replace(/'/g,"\\'")+'\')" title="Soft-delete contact">&#128465;</button>';
+  return li + ' ' + editBtn + ' ' + delBtn;
+}
+
+function companyActions(c) {
+  const editBtn = '<button class="btn-sm btn-green" onclick="window.open(\'/finder/companies\',\'_blank\')" title="Edit in Companies page">&#9998;</button>';
+  const delBtn = '<button class="btn-sm btn-red" onclick="deleteCompanyFromAudit('+c.id+',\''+escapeHtml(c.name).replace(/'/g,"\\'")+'\')" title="Soft-delete company">&#128465;</button>';
+  return editBtn + ' ' + delBtn;
+}
+
+async function deleteContactFromAudit(id, name) {
+  if (!confirm('Soft-delete "'+name+'"?\n\nIt will be hidden but recoverable.')) return;
+  const r = await fetch(API_BASE+'/contact/'+id, {method: 'DELETE', headers: {'X-LF-Key': API_KEY}});
+  if (r.ok) {
+    alert('Contact deleted. Refreshing audit...');
+    loadAudit();
+  } else {
+    const d = await r.json();
+    alert('Delete failed: '+(d.detail||'unknown'));
+  }
+}
+
+async function deleteCompanyFromAudit(id, name) {
+  if (!confirm('Soft-delete "'+name+'"?\n\nIt will be hidden but recoverable.')) return;
+  const r = await fetch(API_BASE+'/company/'+id, {method: 'DELETE', headers: {'X-LF-Key': API_KEY}});
+  if (r.ok) {
+    alert('Company deleted. Refreshing audit...');
+    loadAudit();
+  } else {
+    const d = await r.json();
+    alert('Delete failed: '+(d.detail||'unknown'));
+  }
+}
+
+async function loadAudit() {
+  try {
+    const [companies, contacts] = await Promise.all([
+      fetch(API_BASE + '/companies?limit=500', {headers: {'X-LF-Key': API_KEY}}).then(r => r.ok ? r.json() : {companies: []}),
+      fetch(API_BASE + '/contacts?limit=500', {headers: {'X-LF-Key': API_KEY}}).then(r => r.ok ? r.json() : {contacts: []}),
+    ]);
+
+    const comps = companies.companies || [];
+    const cts = contacts.contacts || [];
+
+    // Metrics
+    const noTitle = cts.filter(c => !c.title);
+    const lowConf = cts.filter(c => (c.confidence_score || 0) < 0.6);
+    const noPattern = comps.filter(c => !c.email_pattern);
+    const manuallyEdited = cts.filter(c => c.is_manually_edited);
+    const withEmail = cts.filter(c => c.email);
+
+    const stats = document.getElementById('auditStats');
+    stats.innerHTML =
+      '<div class="stat-card error"><div class="stat-value">' + noTitle.length + '</div><div class="stat-label">No Title</div></div>' +
+      '<div class="stat-card warning"><div class="stat-value">' + lowConf.length + '</div><div class="stat-label">Low Confidence</div></div>' +
+      '<div class="stat-card warning"><div class="stat-value">' + noPattern.length + '</div><div class="stat-label">No Email Pattern</div></div>' +
+      '<div class="stat-card success"><div class="stat-value">' + withEmail.length + '</div><div class="stat-label">With Emails</div></div>' +
+      '<div class="stat-card"><div class="stat-value">' + manuallyEdited.length + '</div><div class="stat-label">Manually Edited</div></div>';
+
+    // No titles
+    const noTitleTbody = document.getElementById('noTitleTable');
+    if (noTitle.length === 0) {
+      emptyRow(noTitleTbody, 6, 'No contacts without titles. Nice work.');
+    } else {
+      noTitleTbody.innerHTML = noTitle.slice(0, 50).map(c =>
+        '<tr>' +
+          '<td>' + escapeHtml(c.full_name) + '</td>' +
+          '<td>' + escapeHtml(c.company_name || '') + '</td>' +
+          '<td>' + escapeHtml(c.company_city || '') + '</td>' +
+          '<td><span class="badge badge-yellow">' + (c.confidence_score || 0).toFixed(1) + '</span></td>' +
+          '<td>' + contactActions(c) + '</td>' +
+        '</tr>'
+      ).join('');
+    }
+
+    // Low confidence
+    const lowConfTbody = document.getElementById('lowConfTable');
+    if (lowConf.length === 0) {
+      emptyRow(lowConfTbody, 6, 'No low-confidence contacts. All clear.');
+    } else {
+      lowConfTbody.innerHTML = lowConf.slice(0, 50).map(c =>
+        '<tr>' +
+          '<td>' + escapeHtml(c.full_name) + '</td>' +
+          '<td>' + escapeHtml(c.title || '-') + '</td>' +
+          '<td>' + escapeHtml(c.company_name || '') + '</td>' +
+          '<td><span class="badge badge-red">' + (c.confidence_score || 0).toFixed(1) + '</span></td>' +
+          '<td>' + contactActions(c) + '</td>' +
+        '</tr>'
+      ).join('');
+    }
+
+    // No email pattern
+    const noPatternTbody = document.getElementById('noPatternTable');
+    if (noPattern.length === 0) {
+      emptyRow(noPatternTbody, 6, 'All companies have email patterns.');
+    } else {
+      noPatternTbody.innerHTML = noPattern.slice(0, 50).map(c =>
+        '<tr>' +
+          '<td>' + escapeHtml(c.name) + '</td>' +
+          '<td>' + escapeHtml(c.city || '') + '</td>' +
+          '<td>' + (c.contact_count || 0) + '</td>' +
+          '<td>' + (c.website ? '<a href="' + escapeHtml(c.website) + '" target="_blank" style="color:#38bdf8;">' + escapeHtml(c.website) + '</a>' : '<span style="color:#ef4444;">missing</span>') + '</td>' +
+          '<td>' + (c.website ? '<span style="color:#94a3b8;font-family:monospace;font-size:0.8rem;">' + extractDomain(c.website) + '</span>' : '—') + '</td>' +
+          '<td>' + companyActions(c) + '</td>' +
+        '</tr>'
+      ).join('');
+    }
+
+    // Website & domain quality
+    const websiteQualityTbody = document.getElementById('websiteQualityTable');
+    if (comps.length === 0) {
+      emptyRow(websiteQualityTbody, 6, 'No companies to audit.');
+    } else {
+      const aggregatorDomains = ['yelp.com', 'facebook.com', 'linkedin.com', 'google.com', 'mapquest.com', 'yellowpages.com', 'bbb.org'];
+      const suspicious = comps.filter(c => {
+        if (!c.website) return true;
+        const d = extractDomain(c.website).toLowerCase();
+        return aggregatorDomains.some(agg => d.includes(agg));
+      });
+      if (suspicious.length === 0) {
+        emptyRow(websiteQualityTbody, 6, 'All websites look clean.');
+      } else {
+        websiteQualityTbody.innerHTML = suspicious.slice(0, 50).map(c => {
+          let status = '';
+          let statusClass = '';
+          if (!c.website) {
+            status = '<span class="badge badge-red">no website</span>';
+          } else {
+            const d = extractDomain(c.website).toLowerCase();
+            const isAgg = aggregatorDomains.some(agg => d.includes(agg));
+            if (isAgg) {
+              status = '<span class="badge badge-yellow">aggregator</span>';
+            } else {
+              status = '<span class="badge badge-green">ok</span>';
+            }
+          }
+          return '<tr>' +
+            '<td>' + escapeHtml(c.name) + '</td>' +
+            '<td>' + escapeHtml(c.city || '') + '</td>' +
+            '<td>' + (c.website ? '<a href="' + escapeHtml(c.website) + '" target="_blank" style="color:#38bdf8;">' + escapeHtml(c.website) + '</a>' : '<span style="color:#ef4444;">missing</span>') + '</td>' +
+            '<td>' + (c.website ? '<span style="color:#94a3b8;font-family:monospace;font-size:0.8rem;">' + extractDomain(c.website) + '</span>' : '—') + '</td>' +
+            '<td>' + status + '</td>' +
+            '<td>' + companyActions(c) + '</td>' +
+          '</tr>';
+        }).join('');
+      }
+    }
+  } catch(e) {
+    console.error('loadAudit error:', e);
+    document.getElementById('auditStats').innerHTML = '<div class="stat-card error"><div class="stat-value">ERROR</div><div class="stat-label">' + escapeHtml(e.message) + '</div></div>';
+  }
+}
+
+async function backfillWebsites() {
+  if (!confirm('Backfill missing websites by calling Google Places Details API for each company?\n\nThis may take a while.')) return;
+  const info = document.getElementById('actionInfo');
+  info.textContent = 'Processing...';
+  try {
+    const r = await fetch(API_BASE+'/backfill-websites?limit=100', {method: 'POST', headers: {'X-LF-Key': API_KEY}});
+    const d = await r.json();
+    info.textContent = `Done: ${d.enriched} enriched, ${d.failed} failed, ${d.processed} processed`;
+    loadAudit();
+  } catch(e) {
+    info.textContent = 'Error: ' + e.message;
+  }
+}
+
+loadAudit();
+</script>
+</body>
+</html>
