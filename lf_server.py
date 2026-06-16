@@ -1390,7 +1390,11 @@ async def api_geocode(
 
 # ── Email Pattern Discovery ───────────────────────────────────────────────────
 
-from lf_email_patterns import discover_and_store_pattern, derive_emails_for_company
+from lf_email_patterns import (
+    discover_and_store_pattern,
+    derive_emails_for_company,
+    extract_domain_from_website,
+)
 
 
 @app.post("/api/company/{company_id}/discover-email-pattern")
@@ -1398,12 +1402,20 @@ async def api_discover_email_pattern(
     company_id: int,
     _: str = Header(None, alias="X-LF-Key"),
 ):
-    """Discover email pattern for a company and derive emails for contacts."""
+    """Discover email pattern for a company using AI v2 (3-step inner loop)
+    and derive emails for contacts. The website domain is the source of truth.
+
+    - Fail if no website on the company
+    - If pattern already exists, just derive emails
+    - Otherwise call ai_infer_email_pattern_v2 (single AI call, 3-step loop)
+    - Auto-derive emails on any confidence > 0
+    """
     verify_key(_)
     conn = get_db()
     cur = conn.cursor()
     row = cur.execute(
-        "SELECT name, website, email_pattern, email_pattern_confidence FROM companies WHERE id=?", (company_id,)
+        "SELECT id, name, website, business_type as industry, city, state, email_pattern, email_pattern_confidence "
+        "FROM companies WHERE id=?", (company_id,)
     ).fetchone()
     conn.close()
     if not row:
@@ -1417,27 +1429,100 @@ async def api_discover_email_pattern(
             "status": "derived",
             "pattern": company["email_pattern"],
             "confidence": company.get("email_pattern_confidence", 0.0),
-            "emails_derived": count
+            "emails_derived": count,
+            "source": "existing",
         }
 
-    # Discover pattern
-    pattern, confidence = discover_and_store_pattern(
-        company_id, company["name"], company.get("website", "")
-    )
-    if not pattern:
-        return {"status": "not_found", "pattern": None, "confidence": 0.0, "emails_derived": 0}
+    # Extract domain from website — fail if no website
+    website = (company.get("website") or "").strip()
+    if not website:
+        return {
+            "status": "no_website",
+            "pattern": None,
+            "confidence": 0.0,
+            "emails_derived": 0,
+            "message": "Company has no website — cannot infer email pattern",
+        }
 
-    # Auto-derive emails on high-confidence discovery (confidence == 1.0)
+    domain = extract_domain_from_website(website)
+    if not domain:
+        return {
+            "status": "invalid_website",
+            "pattern": None,
+            "confidence": 0.0,
+            "emails_derived": 0,
+            "message": f"Could not extract valid domain from '{website}'",
+        }
+
+    # Call AI v2 (single call, 3-step inner loop)
+    from lf_ai_enrich import ai_infer_email_pattern_v2
+    result = ai_infer_email_pattern_v2(
+        domain=domain,
+        company_name=company.get("name", ""),
+        industry=company.get("industry", ""),
+        city=company.get("city", ""),
+        state=company.get("state", ""),
+    )
+    if not result or not result.get("pattern"):
+        return {
+            "status": "not_found",
+            "pattern": None,
+            "confidence": 0.0,
+            "emails_derived": 0,
+            "domain": domain,
+            "message": "AI could not determine a reliable email pattern",
+        }
+
+    pattern = result["pattern"]
+    confidence = result.get("confidence", 0.0)
+    reasoning = result.get("reasoning", "")
+    source = result.get("source", "ai_v2")
+
+    # Store the pattern in the companies table
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE companies SET email_pattern=?, email_pattern_confidence=? WHERE id=?",
+        (pattern, confidence, company_id),
+    )
+    conn.commit()
+    conn.close()
+
+    # Auto-derive emails if confidence is reasonable (>= 0.40)
     emails_derived = 0
-    if confidence >= 1.0:
+    if confidence >= 0.40:
         emails_derived = derive_emails_for_company(company_id)
 
     return {
         "status": "discovered",
         "pattern": pattern,
         "confidence": confidence,
-        "emails_derived": emails_derived
+        "reasoning": reasoning,
+        "domain": domain,
+        "emails_derived": emails_derived,
+        "source": source,
     }
+
+
+@app.post("/api/email/discover-pattern")
+async def api_email_discover_pattern(
+    body: dict,
+    _: str = Header(None, alias="X-LF-Key"),
+):
+    """Discover email pattern for a company (body-based endpoint for batch use).
+
+    Body: {"company_id": <int>}
+
+    Uses AI v2 (single call, 3-step inner loop) with the company website
+    domain as source of truth for the email tail. Fails if no website.
+    """
+    verify_key(_)
+    company_id = body.get("company_id")
+    if not company_id:
+        raise HTTPException(status_code=400, detail="company_id required")
+
+    # Delegate to the URL-based endpoint logic
+    return await api_discover_email_pattern(company_id, _)
 
 
 @app.patch("/api/company/{company_id}")

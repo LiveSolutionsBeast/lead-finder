@@ -849,6 +849,172 @@ def ai_infer_email_pattern(
         "source": "ai_inferred",
     }
 
+
+def ai_infer_email_pattern_v2(
+    domain: str,
+    company_name: str = "",
+    industry: str = "",
+    city: str = "",
+    state: str = "",
+    timeout: int = 25,
+) -> Optional[dict]:
+    """
+    Email pattern inference with a 3-step INTERNAL reasoning loop
+    (added 2026-06-16 per user spec). This is the new PRIMARY path
+    for `discover_email_pattern` calls.
+
+    Per user spec:
+    - The website domain is the SOURCE OF TRUTH for the email tail.
+    - The prompt is targeted and focused on the AI identifying the
+      most likely pattern for this company.
+    - The 3-step inner loop is the "loops and redundancies" that
+      strengthen the inference:
+        Step 1: INDUSTRY HEURISTIC - which pattern does this industry
+                typically use? (Banking? Tech? Law firm? etc.)
+        Step 2: SCRAPE & SEARCH - think about what you know about the
+                company's website, about page, contact page, press
+                releases, team listings, etc. From those public
+                postings, infer the pattern. (AI uses its training-data
+                knowledge of the website; no live scraping.)
+        Step 3: DOUBLE-CHECK - mentally generate 2 example emails
+                with typical names at this company. If the result
+                is plausible, lock in the pattern. If not, re-pick.
+
+    - Returns the top 10 most common corporate email patterns
+      (down from 21) so the AI doesn't pick obscure variants.
+    - Minimal context: name + industry + location. The AI infers
+      company size from the name/industry.
+    - Single AI call (no outer 3-persona loop).
+
+    Domain rule: the pattern MUST end with @{domain}.
+    Returns None if the AI can't make a reasonable guess.
+    """
+    if not ai_enabled():
+        return None
+    if not domain:
+        return None
+
+    domain = domain.lower().strip().lstrip("@")
+    if domain.startswith("www."):
+        domain = domain[4:]
+
+    # Top 10 most common corporate email patterns
+    canonical_patterns_text = """\
+   1. {first}.{last}@{domain}        - "john.smith@"        (most common worldwide)
+   2. {first}{last}@{domain}         - "johnsmith@"
+   3. {f}{last}@{domain}             - "jsmith@"
+   4. {first}_{last}@{domain}        - "john_smith@"
+   5. {first}@{domain}               - "john@"               (small biz, startups)
+   6. {last}@{domain}                - "smith@"              (very small biz)
+   7. {first}.{last_initial}@{domain} - "john.s@"             (some law firms)
+   8. {last}.{first}@{domain}        - "smith.john@"
+   9. {first}-{last}@{domain}        - "john-smith@"
+  10. {f}.{last}@{domain}            - "j.smith@"            (formal/some finance)"""
+
+    context_parts = [f"Company: {company_name}" if company_name else ""]
+    if industry:
+        context_parts.append(f"Industry: {industry}")
+    context_parts.append(f"Email domain (the tail, AFTER @): @{domain}")
+    if city or state:
+        context_parts.append(f"Location: {city}, {state}")
+    context = "\n".join(p for p in context_parts if p)
+
+    example_pattern = "{first}.{last}@" + domain
+
+    prompt = (
+        "You are a senior sales operations analyst with 20 years of experience\n"
+        "inferring corporate email patterns from company name, industry, and public\n"
+        "information. You are methodical, evidence-driven, and you always double-check\n"
+        "your own work before answering.\n\n"
+        f"# TASK\n"
+        f"Determine the most likely email pattern used by employees of {company_name}\n"
+        f"(@{domain}). The pattern is what comes BEFORE the '@' - the domain is fixed.\n\n"
+        f"# INPUT CONTEXT\n{context}\n\n"
+        f"# DOMAIN RULE (CRITICAL)\n"
+        f"The pattern MUST end with '@{domain}'. Do NOT propose any other domain.\n\n"
+        f"# THE TOP 10 MOST COMMON CORPORATE EMAIL PATTERNS\n"
+        f"Pick exactly one, expressed with placeholders that will be substituted later:\n"
+        f"{canonical_patterns_text}\n\n"
+        f"# REASONING LOOP - DO THESE 3 STEPS IN ORDER BEFORE ANSWERING\n\n"
+        f"STEP 1 - INDUSTRY HEURISTIC:\n"
+        f"  What pattern does this industry typically use? Cite which applies:\n"
+        f"  - Banking / finance / insurance: #1, #3\n"
+        f"  - Tech / SaaS / startups: #1, #3, #5\n"
+        f"  - Law firms: #1, #7\n"
+        f"  - Manufacturing / industrial: #1, #2, #3\n"
+        f"  - Media / agencies / consulting: #1, #2, #5\n"
+        f"  - Healthcare / hospitals: #1, #3, #5\n"
+        f"  - Universities / non-profits: #1, #5, #6\n"
+        f"  - Government / military: #1, #3\n"
+        f"  - Real estate / construction: #1, #3, #4\n"
+        f"  - Retail / hospitality: #1, #5, #6\n"
+        f"  Pick the most common pattern for this industry.\n\n"
+        f"STEP 2 - SCRAPE & SEARCH YOUR KNOWLEDGE:\n"
+        f"  Think about the company's public information that you may have seen in\n"
+        f"  your training data: their website, 'About' page, 'Team' or 'Leadership' page,\n"
+        f"  press releases, contact forms, LinkedIn employee listings, conference\n"
+        f"  speaker bios, etc. From any of those sources, have you seen an email\n"
+        f"  address at @{domain} that would confirm a pattern? If so, use that as\n"
+        f"  strong evidence. If you have no specific public evidence for THIS company,\n"
+        f"  fall back to the industry heuristic from Step 1.\n\n"
+        f"STEP 3 - DOUBLE-CHECK:\n"
+        f"  Mentally generate 2 example emails using your chosen pattern with typical\n"
+        f"  names at this company (e.g. 'John Smith' -> 'john.smith@{domain}'). Is the\n"
+        f"  result plausible? If yes, lock it in. If the result looks weird (e.g.\n"
+        f"  duplicates, ambiguous abbreviations), reconsider.\n\n"
+        f"# CONFIDENCE SCORING\n"
+        f"  0.85-1.0: pattern strongly supported by industry + Step 2 evidence\n"
+        f"  0.65-0.84: industry heuristic is clear, no contradicting evidence\n"
+        f"  0.40-0.64: industry ambiguous, multiple plausible patterns\n"
+        f"  0.20-0.39: low confidence - essentially guessing\n"
+        f"  0.0-0.19: no basis - return null\n\n"
+        f"# OUTPUT FORMAT (STRICT JSON, NO PROSE)\n"
+        f"Return ONLY a JSON object:\n"
+        f'{{"pattern": "<one of the 10 patterns ending in @{domain}>",\n'
+        f' "confidence": <float 0.0-1.0>,\n'
+        f' "reasoning": "<one short sentence citing the strongest evidence>",\n'
+        f' "pattern_index": <integer 1-10>}}\n\n'
+        f'If no basis: {{"pattern": null, "confidence": 0.0, "reasoning": "<why>",\n'
+        f' "pattern_index": null}}\n\n'
+        f"# REMINDERS\n"
+        f"- Pattern MUST end with @{domain}\n"
+        f"- Use real placeholders ({{first}}, {{last}}, {{f}}, {{l}}, {{m}}, {{n}}) - not literal names\n"
+        f"- Don't invent patterns not in the top 10\n"
+        f"- When in doubt, default to #1 ({{first}}.{{last}}@{domain}) - most common worldwide\n\n"
+        f"Example valid output: {{\"pattern\": \"{example_pattern}\",\n"
+        f' \"confidence\": 0.85, \"reasoning\": \"...\", \"pattern_index\": 1}}'
+    )
+
+    response = ai_complete(prompt, operation="pattern_inference", gap_count=0, timeout=timeout)
+    if not response:
+        return None
+
+    result = _extract_json_from_response(response)
+    if not isinstance(result, dict):
+        return None
+    if not result.get("pattern"):
+        return None
+
+    # Substitute the actual domain into the pattern
+    pattern = result["pattern"]
+    if "{domain}" not in pattern:
+        # AI forgot the {domain} placeholder - append it
+        if "@" in pattern:
+            pattern = pattern.split("@")[0] + "@{domain}"
+        else:
+            pattern = pattern + "@{domain}"
+    pattern = pattern.replace("{domain}", domain)
+
+    return {
+        "pattern": pattern,
+        "confidence": float(result.get("confidence", 0.0)),
+        "reasoning": result.get("reasoning", ""),
+        "pattern_index": result.get("pattern_index"),
+        "source": "ai_inferred_v2",
+    }
+
+
+
 def ai_discover_company_website(
     company_name: str,
     city: str = "",
