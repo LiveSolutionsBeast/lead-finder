@@ -12,7 +12,7 @@ Two distinct use cases (per user spec 2026-06-06):
 Both run via the same cloud-model fallback chain:
   Primary:   minimax-m3:cloud       (fast, free, default)
   Fallback 1: deepseek-v4-pro:cloud  (more reasoning power)
-  Fallback 2: glm-5.1:cloud          (alternative reasoning)
+  Fallback 2: glm-5.2:cloud          (alternative reasoning)
 
 If ALL cloud models fail, callers fall back to regex/string matching.
 AI is ADDITIVE only — failures NEVER break the pipeline.
@@ -74,7 +74,7 @@ def cloud_model_fallback_1() -> str:
 
 
 def cloud_model_fallback_2() -> str:
-    return get("ai_cloud_model_fallback_2", "glm-5.1:cloud")
+    return get("ai_cloud_model_fallback_2", "glm-5.2:cloud")
 
 
 def cloud_model_chain() -> list[str]:
@@ -898,6 +898,49 @@ def ai_infer_email_pattern_v2(
     if domain.startswith("www."):
         domain = domain[4:]
 
+    # ── REAL SEARCH STEP (added 2026-06-16 per user request) ────────────────────
+    # We run SearXNG to find public pages about this company, then pass the
+    # search-result snippets to the AI as evidence. The AI still makes the final
+    # pattern decision; we do NOT extract emails directly from SearXNG results.
+    # Lazy import to avoid circular dependencies.
+    search_snippets = []
+    try:
+        from lf_search_providers import search as _searx_search
+        search_queries = [
+            # Direct email mentions on the company domain
+            f'"@{domain}" "{company_name}"',
+            f'site:{domain} "@" email contact',
+            # Pattern database / contact-intelligence pages
+            f'"{company_name}" email format pattern',
+            f'"{company_name}" "{domain}" "email format"',
+            # LinkedIn / job postings often expose real employee emails
+            f'"{company_name}" "@{domain}" -site:{domain}',
+            f'"{domain}" "General Dynamics" "email" format',
+        ]
+        seen_snippets = set()
+        for q in search_queries:
+            try:
+                results, _provider = _searx_search(q, timeout=15, prefer="searxng", ai_extract=False)
+                for r in results:
+                    # Results may be dicts or dataclass objects
+                    title = r.get("title") if isinstance(r, dict) else getattr(r, "title", "")
+                    snippet = r.get("snippet") if isinstance(r, dict) else getattr(r, "snippet", "")
+                    url = r.get("url") if isinstance(r, dict) else getattr(r, "url", "")
+                    text = " ".join(filter(None, [title, snippet, url])).strip()
+                    if not text or text in seen_snippets:
+                        continue
+                    seen_snippets.add(text)
+                    # Keep snippets that mention the domain or look like pattern sources
+                    lower = text.lower()
+                    if domain in lower or "email format" in lower or "email pattern" in lower or "leadiq" in lower or "rocketreach" in lower or "neverbounce" in lower:
+                        search_snippets.append(text)
+            except Exception:
+                continue
+        # Limit context window
+        search_snippets = search_snippets[:12]
+    except Exception:
+        search_snippets = []
+
     # Top 10 most common corporate email patterns
     canonical_patterns_text = """\
    1. {first}.{last}@{domain}        - "john.smith@"        (most common worldwide)
@@ -921,6 +964,17 @@ def ai_infer_email_pattern_v2(
 
     example_pattern = "{first}.{last}@" + domain
 
+    search_context = ""
+    if search_snippets:
+        search_context = (
+            f"# PUBLIC SEARCH RESULTS (use as evidence, do not invent)\n"
+            f"The following snippets were returned by a web search for {company_name} / @{domain}.\n"
+            f"Use them as evidence for Step 2. If a snippet contains an actual email address\n"
+            f"at @{domain}, that is the strongest possible evidence.\n\n"
+            + "\n---\n".join(f"{i+1}. {s[:500]}" for i, s in enumerate(search_snippets))
+            + "\n\n"
+        )
+
     prompt = (
         "You are a senior sales operations analyst with 20 years of experience\n"
         "inferring corporate email patterns from company name, industry, and public\n"
@@ -932,6 +986,7 @@ def ai_infer_email_pattern_v2(
         f"# INPUT CONTEXT\n{context}\n\n"
         f"# DOMAIN RULE (CRITICAL)\n"
         f"The pattern MUST end with '@{domain}'. Do NOT propose any other domain.\n\n"
+        f"{search_context}"
         f"# THE TOP 10 MOST COMMON CORPORATE EMAIL PATTERNS\n"
         f"Pick exactly one, expressed with placeholders that will be substituted later:\n"
         f"{canonical_patterns_text}\n\n"
@@ -948,25 +1003,24 @@ def ai_infer_email_pattern_v2(
         f"  - Government / military: #1, #3\n"
         f"  - Real estate / construction: #1, #3, #4\n"
         f"  - Retail / hospitality: #1, #5, #6\n"
-        f"  Pick the most common pattern for this industry.\n\n"
-        f"STEP 2 - SCRAPE & SEARCH YOUR KNOWLEDGE:\n"
-        f"  Think about the company's public information that you may have seen in\n"
-        f"  your training data: their website, 'About' page, 'Team' or 'Leadership' page,\n"
-        f"  press releases, contact forms, LinkedIn employee listings, conference\n"
-        f"  speaker bios, etc. From any of those sources, have you seen an email\n"
-        f"  address at @{domain} that would confirm a pattern? If so, use that as\n"
-        f"  strong evidence. If you have no specific public evidence for THIS company,\n"
-        f"  fall back to the industry heuristic from Step 1.\n\n"
+        f"  This step produces only a weak prior. It is NOT sufficient by itself.\n\n"
+        f"STEP 2 - EVIDENCE REVIEW:\n"
+        f"  Review the PUBLIC SEARCH RESULTS above (if any). Look for actual email\n"
+        f"  addresses at @{domain}, team/leadership pages, about pages, press releases,\n"
+        f"  conference bios, or LinkedIn listings that reveal how this company formats\n"
+        f"  employee emails. If you find concrete evidence, use it as the primary basis.\n"
+        f"  If the search results contain no useful evidence for THIS company, say so.\n\n"
         f"STEP 3 - DOUBLE-CHECK:\n"
         f"  Mentally generate 2 example emails using your chosen pattern with typical\n"
         f"  names at this company (e.g. 'John Smith' -> 'john.smith@{domain}'). Is the\n"
         f"  result plausible? If yes, lock it in. If the result looks weird (e.g.\n"
         f"  duplicates, ambiguous abbreviations), reconsider.\n\n"
         f"# CONFIDENCE SCORING\n"
-        f"  0.85-1.0: pattern strongly supported by industry + Step 2 evidence\n"
-        f"  0.65-0.84: industry heuristic is clear, no contradicting evidence\n"
-        f"  0.40-0.64: industry ambiguous, multiple plausible patterns\n"
-        f"  0.20-0.39: low confidence - essentially guessing\n"
+        f"Be conservative. A guess based only on 'industry average' is NOT strong evidence.\n"
+        f"  0.85-1.0: pattern strongly supported by search evidence (actual public postings at @{domain})\n"
+        f"  0.65-0.84: search evidence is indirect but consistent (e.g. parent/sister company, pattern database)\n"
+        f"  0.40-0.64: only the industry heuristic applies; search results contained no useful evidence\n"
+        f"  0.20-0.39: weak or contradictory signals\n"
         f"  0.0-0.19: no basis - return null\n\n"
         f"# OUTPUT FORMAT (STRICT JSON, NO PROSE)\n"
         f"Return ONLY a JSON object:\n"
@@ -980,7 +1034,8 @@ def ai_infer_email_pattern_v2(
         f"- Pattern MUST end with @{domain}\n"
         f"- Use real placeholders ({{first}}, {{last}}, {{f}}, {{l}}, {{m}}, {{n}}) - not literal names\n"
         f"- Don't invent patterns not in the top 10\n"
-        f"- When in doubt, default to #1 ({{first}}.{{last}}@{domain}) - most common worldwide\n\n"
+        f"- Do NOT default to #1 just because it is common. Only pick a pattern if you have evidence.\n"
+        f"- If the search results provide no evidence for THIS company, return null.\n\n"
         f"Example valid output: {{\"pattern\": \"{example_pattern}\",\n"
         f' \"confidence\": 0.85, \"reasoning\": \"...\", \"pattern_index\": 1}}'
     )

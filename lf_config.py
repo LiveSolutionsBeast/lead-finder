@@ -135,7 +135,7 @@ def rate_limit(key: str, default: int) -> int:
 # Cloud-only chain (per user spec 2026-06-06). No local models.
 # Primary: minimax-m3:cloud (fast, free)
 # Fallback 1: deepseek-v4-pro:cloud (more reasoning power)
-# Fallback 2: glm-5.1:cloud (alternative reasoning)
+# Fallback 2: glm-5.2:cloud (alternative reasoning)
 
 def ai_ollama_url() -> str:
     return get("ai_ollama_url", "http://localhost:11434")
@@ -150,7 +150,7 @@ def ai_cloud_model_fallback_1() -> str:
 
 
 def ai_cloud_model_fallback_2() -> str:
-    return get("ai_cloud_model_fallback_2", "glm-5.1:cloud")
+    return get("ai_cloud_model_fallback_2", "glm-5.2:cloud")
 
 
 def ai_enrichment_enabled() -> bool:

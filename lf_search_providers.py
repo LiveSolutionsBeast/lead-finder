@@ -19,7 +19,7 @@ per the user spec.
 AI Enrichment (post-search, not a provider):
   - When ai_extract is True (default if config enables it), raw results
     are passed through AI to extract structured fields.
-  - Cloud model chain: minimax-m3:cloud -> deepseek-v4-pro:cloud -> glm-5.1:cloud.
+  - Cloud model chain: minimax-m3:cloud -> deepseek-v4-pro:cloud -> glm-5.2:cloud.
   - Falls back gracefully to raw results if all AI models fail.
 
 Future: AI agents will orchestrate this section (sequential: PixelRAG ->
@@ -556,7 +556,7 @@ def search(query: str, timeout: int = 15, prefer: str = "", ai_extract: Optional
       When ai_extract is True (default if config enables it), raw SearXNG results
       are passed through AI to extract structured fields (names, titles, LinkedIn URLs).
       Gap-based: AI is invoked proportional to how many fields are missing.
-      Cloud model chain: minimax-m3:cloud -> deepseek-v4-pro:cloud -> glm-5.1:cloud.
+      Cloud model chain: minimax-m3:cloud -> deepseek-v4-pro:cloud -> glm-5.2:cloud.
       Falls back gracefully to raw results if all AI models fail.
 
     Args:

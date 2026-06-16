@@ -368,6 +368,18 @@ function renderRow(c) {
   return tr;
 }
 
+function renderCompanies(companies) {
+  const tbody = document.getElementById('companiesTable');
+  tbody.innerHTML = '';
+  if (!companies || companies.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:2rem;">No companies found. Try adjusting your filters.</td></tr>';
+    return;
+  }
+  companies.forEach(c => {
+    tbody.appendChild(renderRow(c));
+  });
+}
+
 async function loadCompanies() {
   const industry = document.getElementById('filterIndustry').value.trim();
   const city = document.getElementById('filterCity').value.trim();
