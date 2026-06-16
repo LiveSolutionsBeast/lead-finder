@@ -297,7 +297,7 @@ async function loadContacts() {
   // Issue #6: 'Most Recent' sort option
   const sortBy = document.getElementById('sortBy').value;
 
-  let url = API_BASE+'/contacts?limit=500';
+  let url = API_BASE+'/contacts?limit=500&derive_emails=true';
   if (compText && !company) url += '&company_name='+encodeURIComponent(compText);
   else if (company) url += '&company_name='+encodeURIComponent(company);
   if (titleText && !title) url += '&title='+encodeURIComponent(titleText);

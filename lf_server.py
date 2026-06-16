@@ -470,6 +470,7 @@ async def api_contacts(
     min_confidence: float = Query(0.0, description="Minimum confidence score"),
     sort: str = Query("confidence", description="Sort order: 'confidence' (default) or 'recent'"),
     limit: int = Query(200, description="Max results to return"),
+    derive_emails: bool = Query(False, description="Auto-derive missing emails from company patterns"),
     _: str = Header(None, alias="X-LF-Key"),
 ):
     verify_key(_)
@@ -504,7 +505,67 @@ async def api_contacts(
           "limit": min(limit, 500)}).fetchall()
     results = [dict(r) for r in rows]
     conn.close()
-    return {"contacts": results, "total": len(results)}
+
+    # Auto-derive missing emails from company patterns if requested (added 2026-06-16)
+    derived_count = 0
+    if derive_emails:
+        from lf_email_patterns import derive_email
+        # Group missing emails by company pattern
+        missing_by_company: dict[int, list[tuple[int, str, str]]] = {}
+        for ct in results:
+            if ct.get("email"):
+                continue
+            company_id = ct.get("company_id")
+            pattern = ct.get("company_email_pattern")
+            if not company_id or not pattern:
+                continue
+            if not ct.get("first_name") and not ct.get("last_name"):
+                # Try to parse full_name if first/last are missing
+                full = (ct.get("full_name") or "").strip()
+                if full:
+                    parts = full.split()
+                    if len(parts) >= 2:
+                        ct["first_name"] = parts[0]
+                        ct["last_name"] = " ".join(parts[1:])
+            first = ct.get("first_name") or ""
+            last = ct.get("last_name") or ""
+            if not first or not last:
+                continue
+            missing_by_company.setdefault(company_id, []).append((ct["id"], first, last))
+
+        if missing_by_company:
+            conn = get_db()
+            cur = conn.cursor()
+            for company_id, contacts in missing_by_company.items():
+                row = cur.execute("SELECT email_pattern FROM companies WHERE id=?", (company_id,)).fetchone()
+                if not row or not row[0]:
+                    continue
+                pattern = row[0]
+                for contact_id, first, last in contacts:
+                    email = derive_email(first, last, pattern)
+                    if email:
+                        cur.execute("UPDATE contacts SET email=?, is_derived_email=1 WHERE id=?",
+                                    (email, contact_id))
+                        derived_count += 1
+            conn.commit()
+            conn.close()
+            # Refresh results to include newly derived emails
+            conn = get_db()
+            cur = conn.cursor()
+            ids = [str(ct["id"]) for ct in results]
+            if ids:
+                email_map = {}
+                id_list = ",".join(ids)
+                for r in cur.execute(f"SELECT id, email, is_derived_email FROM contacts WHERE id IN ({id_list})"):
+                    email_map[r["id"]] = (r["email"], r["is_derived_email"])
+                for ct in results:
+                    em, is_der = email_map.get(ct["id"], (None, 0))
+                    if em:
+                        ct["email"] = em
+                        ct["is_derived_email"] = is_der
+            conn.close()
+
+    return {"contacts": results, "total": len(results), "derived_count": derived_count}
 
 
 @app.get("/api/companies/dropdowns")
@@ -1488,9 +1549,9 @@ async def api_discover_email_pattern(
     conn.commit()
     conn.close()
 
-    # Auto-derive emails if confidence is reasonable (>= 0.40)
+    # Auto-derive emails if confidence is reasonable (>= 0.35)
     emails_derived = 0
-    if confidence >= 0.40:
+    if confidence >= 0.35:
         emails_derived = derive_emails_for_company(company_id)
 
     return {
