@@ -43,7 +43,7 @@ def _backup_db():
     return dst
 
 
-def audit_company(company: dict) -> dict | None:
+def audit_company(company: dict, timeout: int = 30) -> dict | None:
     """Run v2 inference for one company and return a suggestion dict."""
     website = (company.get("website") or "").strip()
     if not website:
@@ -53,13 +53,31 @@ def audit_company(company: dict) -> dict | None:
     if not domain:
         return None
 
-    result = ai_infer_email_pattern_v2(
-        domain=domain,
-        company_name=company.get("name", ""),
-        industry=company.get("business_type", ""),
-        city=company.get("city", ""),
-        state=company.get("state", ""),
-    )
+    try:
+        result = ai_infer_email_pattern_v2(
+            domain=domain,
+            company_name=company.get("name", ""),
+            industry=company.get("business_type", ""),
+            city=company.get("city", ""),
+            state=company.get("state", ""),
+            timeout=timeout,
+        )
+    except Exception as exc:
+        return {
+            "id": company["id"],
+            "name": company["name"],
+            "website": website,
+            "domain": domain,
+            "old_pattern": (company.get("email_pattern") or "").strip(),
+            "old_confidence": float(company.get("email_pattern_confidence") or 0.0),
+            "new_pattern": None,
+            "new_confidence": 0.0,
+            "reasoning": f"AI call failed: {exc}",
+            "pattern_index": None,
+            "same": False,
+            "failed": True,
+        }
+
     if not result or not result.get("pattern"):
         return None
 
@@ -80,6 +98,7 @@ def audit_company(company: dict) -> dict | None:
         "reasoning": result.get("reasoning", ""),
         "pattern_index": result.get("pattern_index"),
         "same": old_pattern.lower() == new_pattern.lower(),
+        "failed": False,
     }
 
 
@@ -98,7 +117,12 @@ def should_apply(suggestion: dict) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="Audit email patterns safely")
     parser.add_argument("--apply", action="store_true", help="Commit high-confidence corrections")
-    parser.add_argument("--company", type=int, help="Audit only this company ID")
+    parser.add_argument(
+        "--company",
+        type=lambda s: [int(x.strip()) for x in s.split(",")],
+        help="Comma-separated company IDs to audit (e.g. 590,591,614)",
+    )
+    parser.add_argument("--timeout", type=int, default=30, help="Per-company AI timeout in seconds (default 30)")
     parser.add_argument("--min-conf", type=float, default=0.85, help="Minimum confidence to apply (default 0.85)")
     args = parser.parse_args()
 
@@ -106,10 +130,11 @@ def main():
     cur = conn.cursor()
 
     if args.company:
+        placeholders = ",".join("?" for _ in args.company)
         rows = cur.execute(
             "SELECT id, name, website, business_type, city, state, email_pattern, email_pattern_confidence "
-            "FROM companies WHERE id=? AND email_pattern IS NOT NULL AND email_pattern != ''",
-            (args.company,),
+            f"FROM companies WHERE id IN ({placeholders}) AND email_pattern IS NOT NULL AND email_pattern != ''",
+            args.company,
         ).fetchall()
     else:
         rows = cur.execute(
@@ -127,7 +152,7 @@ def main():
     suggestions = []
     for row in rows:
         company = dict(row)
-        suggestion = audit_company(company)
+        suggestion = audit_company(company, timeout=args.timeout)
         if not suggestion:
             # Could not infer — keep but mark
             print(
@@ -135,15 +160,22 @@ def main():
             )
             continue
         suggestions.append(suggestion)
-        apply_ok = should_apply(suggestion) and suggestion["new_confidence"] >= args.min_conf
-        if not args.apply:
-            apply_ok = False
-        marker = "APPLY" if apply_ok else "review"
+        would_apply = should_apply(suggestion) and suggestion["new_confidence"] >= args.min_conf
+        if suggestion.get("failed"):
+            marker = "error"
+        elif args.apply and would_apply:
+            marker = "APPLY"
+        elif would_apply:
+            marker = "WOULD_APPLY"
+        else:
+            marker = "review"
+        new_p = suggestion.get("new_pattern") or ""
+        new_c = suggestion.get("new_confidence", 0.0)
         print(
             f"{suggestion['id']}|{suggestion['name']}|{suggestion['website']}|"
             f"{suggestion['domain']}|{suggestion['old_pattern']}|"
-            f"{suggestion['old_confidence']:.2f}|{suggestion['new_pattern']}|"
-            f"{suggestion['new_confidence']:.2f}|{marker}|{suggestion['reasoning']}"
+            f"{suggestion['old_confidence']:.2f}|{new_p}|"
+            f"{new_c:.2f}|{marker}|{suggestion['reasoning']}"
         )
 
     apply_count = sum(
