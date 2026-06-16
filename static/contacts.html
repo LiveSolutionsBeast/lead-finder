@@ -59,6 +59,12 @@ tr:hover td{background:#1e293b}
 .page-controls{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap}
 .page-controls select{padding:0.3rem 0.5rem;font-size:0.8rem;min-width:auto}
 .page-info{color:#94a3b8;font-size:0.8rem}
+/* Sortable column headers (added 2026-06-16) */
+th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:1.1rem;transition:background 0.15s}
+th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
+th.sortable::after{content:'⇅';position:absolute;right:0.4rem;top:50%;transform:translateY(-50%);color:#475569;font-size:0.75rem;opacity:0.5}
+th.sortable.sort-asc::after{content:'▲';color:#38bdf8;opacity:1}
+th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </style>
 </head>
 <body>
@@ -86,7 +92,7 @@ tr:hover td{background:#1e293b}
 <h2>Contacts</h2>
 <div class="filter-row">
 <label style="font-size:0.8rem;color:#94a3b8;">Group: <select id="groupBy" onchange="loadContacts()"><option value="company">Company</option><option value="none">Flat List</option></select></label>
-<label style="font-size:0.8rem;color:#94a3b8;">Sort: <select id="sortBy" onchange="loadContacts()"><option value="confidence">By Confidence</option><option value="recent">Most Recent</option></select></label>
+<label style="font-size:0.8rem;color:#94a3b8;">Sort: <select id="sortBy" onchange="onSortDropdownChange()"><option value="confidence">By Confidence</option><option value="recent">Most Recent</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">Company: <select id="filterCompany" onchange="loadContacts()"><option value="">All</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">Title: <select id="filterTitle" onchange="loadContacts()"><option value="">All</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">City: <select id="filterCity" onchange="loadContacts()"><option value="">All</option></select></label>
@@ -103,7 +109,7 @@ tr:hover td{background:#1e293b}
 </div>
 <div class="table-wrap">
 <table>
-<thead><tr><th>Name</th><th>Title</th><th>Company</th><th>Email</th><th>Pattern</th><th>Found</th><th>Conf</th><th>Local</th><th>Score</th><th>LinkedIn</th><th>Actions</th></tr></thead>
+<thead><tr><th class="sortable" data-sort-key="full_name">Name</th><th class="sortable" data-sort-key="title">Title</th><th class="sortable" data-sort-key="company_name">Company</th><th class="sortable" data-sort-key="email">Email</th><th class="sortable" data-sort-key="company_email_pattern">Pattern</th><th class="sortable" data-sort-key="found_at">Found</th><th>Conf</th><th>Local</th><th class="sortable" data-sort-key="confidence_score">Score</th><th>LinkedIn</th><th>Actions</th></tr></thead>
 <tbody id="contactsTable"></tbody>
 </table>
 </div>
@@ -151,6 +157,98 @@ const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 let currentEditId = null;
 let allContacts = [];
 let companyOptions = [];
+// Sort state (added 2026-06-16)
+let currentSort = { key: 'confidence_score', dir: 'desc' };
+
+// Generic comparator: handles strings, numbers, nulls.
+function _compareValues(a, b, dir) {
+  // null/undefined sort to the end always
+  const aNull = a === null || a === undefined || a === '';
+  const bNull = b === null || b === undefined || b === '';
+  if (aNull && bNull) return 0;
+  if (aNull) return 1;
+  if (bNull) return -1;
+  // Numeric vs string
+  if (typeof a === 'number' && typeof b === 'number') {
+    return dir === 'asc' ? a - b : b - a;
+  }
+  const sa = String(a).toLowerCase();
+  const sb = String(b).toLowerCase();
+  // Try numeric comparison if both look numeric
+  const na = parseFloat(sa), nb = parseFloat(sb);
+  if (!isNaN(na) && !isNaN(nb) && /^-?[\d.]+$/.test(sa) && /^-?[\d.]+$/.test(sb)) {
+    return dir === 'asc' ? na - nb : nb - na;
+  }
+  if (sa < sb) return dir === 'asc' ? -1 : 1;
+  if (sa > sb) return dir === 'asc' ? 1 : -1;
+  return 0;
+}
+
+function sortContacts(contacts, key, dir) {
+  // Return a NEW array sorted by key/dir. Stable sort.
+  return contacts.slice().sort((a, b) => {
+    const av = a ? a[key] : null;
+    const bv = b ? b[key] : null;
+    return _compareValues(av, bv, dir);
+  });
+}
+
+function applyCurrentSort() {
+  return sortContacts(allContacts, currentSort.key, currentSort.dir);
+}
+
+function handleSortClick(key) {
+  if (currentSort.key === key) {
+    currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSort.key = key;
+    // numeric columns default to desc (highest first), string columns to asc
+    const numericKeys = ['confidence_score', 'found_at', 'company_email_confidence'];
+    currentSort.dir = numericKeys.includes(key) ? 'desc' : 'asc';
+  }
+  // Update header indicators
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.getAttribute('data-sort-key') === key) {
+      th.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+  // Re-render with the current perPage + groupBy
+  const perPage = parseInt(document.getElementById('perPage').value) || 20;
+  const groupBy = document.getElementById('groupBy').value;
+  renderContacts(applyCurrentSort(), perPage, groupBy);
+}
+
+// Wire up click handlers on sortable headers
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => handleSortClick(th.getAttribute('data-sort-key')));
+  });
+  // Mark the default sort header
+  const def = document.querySelector('th.sortable[data-sort-key="' + currentSort.key + '"]');
+  if (def) def.classList.add('sort-desc');
+});
+
+// When the Sort dropdown changes, also update the column sort state
+// so the headers stay in sync with the dropdown selection.
+function onSortDropdownChange() {
+  const v = document.getElementById('sortBy').value;
+  if (v === 'recent') {
+    currentSort.key = 'found_at';
+    currentSort.dir = 'desc';
+  } else {
+    currentSort.key = 'confidence_score';
+    currentSort.dir = 'desc';
+  }
+  // Update header indicators
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.getAttribute('data-sort-key') === currentSort.key) {
+      th.classList.add('sort-desc');
+    }
+  });
+  loadContacts();
+}
 
 async function loadStats() {
   try {
@@ -211,7 +309,7 @@ async function loadContacts() {
     const r = await fetch(url, {headers: {'X-LF-Key': API_KEY}});
     const data = await r.json();
     allContacts = data.contacts || [];
-    renderContacts(allContacts, perPage, groupBy);
+    renderContacts(applyCurrentSort(), perPage, groupBy);
   } catch(e) {
     showToast('Failed to load contacts', 'error');
   }

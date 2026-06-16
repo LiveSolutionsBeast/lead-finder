@@ -54,6 +54,12 @@ tr:hover td{background:#1e293b}
 .filter-row{display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center}
 .hidden{display:none}
 .inline-code{color:#38bdf8;font-family:monospace;font-size:0.85rem}
+/* Sortable column headers (added 2026-06-16) */
+th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:1.1rem;transition:background 0.15s}
+th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
+th.sortable::after{content:'⇅';position:absolute;right:0.4rem;top:50%;transform:translateY(-50%);color:#475569;font-size:0.75rem;opacity:0.5}
+th.sortable.sort-asc::after{content:'▲';color:#38bdf8;opacity:1}
+th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </style>
 </head>
 <body>
@@ -199,6 +205,71 @@ function esc(s) {
     return d.innerHTML;
 }
 
+function escAttr(s) {
+    // Escape for use in an HTML attribute value (data-*)
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Sortable table helper (added 2026-06-16) — for all 3 tables on this page.
+// Wires up click handlers on th.sortable. Re-orders the rows in place
+// using the data-* attributes on each <tr>. Re-renders the sort
+// indicators on the headers. defaultSortKey is the initial sort column.
+function wireEmailsTableSort(selector, defaultSortKey) {
+    const tbl = document.querySelector(selector);
+    if (!tbl) return;
+    const ths = tbl.querySelectorAll('th.sortable');
+    const tbody = tbl.querySelector('tbody');
+    if (!tbody) return;
+    // Initialize per-table state if not yet
+    const stateKey = '__sort_' + selector;
+    if (!tbl[stateKey]) {
+        tbl[stateKey] = { key: defaultSortKey, dir: 'asc' };
+    }
+    const state = tbl[stateKey];
+
+    ths.forEach(th => {
+        if (th.__wired) return;
+        th.__wired = true;
+        // mark default indicator
+        if (th.getAttribute('data-sort-key') === state.key) {
+            th.classList.add(state.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+        th.addEventListener('click', () => {
+            const key = th.getAttribute('data-sort-key');
+            if (state.key === key) {
+                state.dir = state.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.key = key;
+                // string columns default asc, numeric-like columns default desc
+                const numericKeys = ['pattern_confidence', 'smtp', 'mx'];
+                state.dir = numericKeys.includes(key) ? 'desc' : 'asc';
+            }
+            ths.forEach(t => {
+                t.classList.remove('sort-asc', 'sort-desc');
+                if (t.getAttribute('data-sort-key') === state.key) {
+                    t.classList.add(state.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+                }
+            });
+            // Re-order rows
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                const av = a.getAttribute('data-' + state.key) || '';
+                const bv = b.getAttribute('data-' + state.key) || '';
+                // numeric coercion if both look numeric
+                const an = parseFloat(av), bn = parseFloat(bv);
+                if (!isNaN(an) && !isNaN(bn) && /^-?[\d.]+$/.test(av) && /^-?[\d.]+$/.test(bv)) {
+                    return state.dir === 'asc' ? an - bn : bn - an;
+                }
+                const sa = av.toLowerCase(), sb = bv.toLowerCase();
+                if (sa < sb) return state.dir === 'asc' ? -1 : 1;
+                if (sa > sb) return state.dir === 'asc' ? 1 : -1;
+                return 0;
+            });
+            rows.forEach(r => tbody.appendChild(r));
+        });
+    });
+}
+
 // ---- Load SMTP Status ----
 async function loadSmtpStatus() {
     try {
@@ -277,9 +348,10 @@ function renderResults(results, container) {
         container.innerHTML = '<div class="msg msg-info">No results yet.</div>';
         return;
     }
-    let html = '<table><thead><tr><th>Email</th><th>Status</th><th>Analysis</th><th>Domain</th><th>SMTP</th><th>MX</th></tr></thead><tbody>';
+    let html = '<table id="resultsTable"><thead><tr><th class="sortable" data-sort-key="email">Email</th><th class="sortable" data-sort-key="status">Status</th><th class="sortable" data-sort-key="analysis">Analysis</th><th class="sortable" data-sort-key="domain">Domain</th><th class="sortable" data-sort-key="smtp">SMTP</th><th class="sortable" data-sort-key="mx">MX</th></tr></thead><tbody>';
     for (const r of results) {
-        html += `<tr>
+        const smtpVal = r.smtp_probed ? (r.smtp_code || 'OK') : '';
+        html += `<tr data-email="${escAttr(r.email||'')}" data-status="${escAttr(r.status||'')}" data-analysis="${escAttr(r.analysis||'')}" data-domain="${escAttr(r.domain||'')}" data-smtp="${escAttr(smtpVal)}" data-mx="${escAttr(r.mx_host||'')}">
             <td style="font-family:monospace;font-size:0.8rem;">${esc(r.email)}</td>
             <td>${statusBadge(r.status)}</td>
             <td>${esc(r.analysis)}</td>
@@ -290,6 +362,7 @@ function renderResults(results, container) {
     }
     html += '</tbody></table>';
     container.innerHTML = html;
+    wireEmailsTableSort('#resultsTable', 'email');
 }
 
 // ---- Validate Derived ----
@@ -375,9 +448,9 @@ async function loadCache() {
             return;
         }
         let html = `<p style="color:#94a3b8;font-size:0.85rem;margin-bottom:0.75rem;">${probes.length} most recent probes</p>`;
-        html += '<table><thead><tr><th>Email</th><th>Status</th><th>Analysis</th><th>Domain</th><th>Validated At</th></tr></thead><tbody>';
+        html += '<table id="probesTable"><thead><tr><th class="sortable" data-sort-key="email">Email</th><th class="sortable" data-sort-key="status">Status</th><th class="sortable" data-sort-key="analysis">Analysis</th><th class="sortable" data-sort-key="domain">Domain</th><th class="sortable" data-sort-key="validated_at">Validated At</th></tr></thead><tbody>';
         for (const p of probes) {
-            html += `<tr>
+            html += `<tr data-email="${escAttr(p.email||'')}" data-status="${escAttr(p.status||'')}" data-analysis="${escAttr(p.analysis||'')}" data-domain="${escAttr(p.domain||'')}" data-validated_at="${escAttr(p.validated_at||'')}">
                 <td style="font-family:monospace;font-size:0.8rem;">${esc(p.email)}</td>
                 <td>${statusBadge(p.status)}</td>
                 <td>${esc(p.analysis)}</td>
@@ -387,6 +460,7 @@ async function loadCache() {
         }
         html += '</tbody></table>';
         container.innerHTML = html;
+        wireEmailsTableSort('#probesTable', 'email');
     } catch (e) {
         container.innerHTML = `<div class="msg msg-error">&#10060; Error: ${esc(e.message)}</div>`;
     }
@@ -406,9 +480,9 @@ async function loadReadyForExport() {
             return;
         }
         let html = `<p style="color:#94a3b8;font-size:0.85rem;margin-bottom:0.75rem;">${data.total} contacts ready for export</p>`;
-        html += '<table><thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Company</th><th>City</th><th>State</th><th>Pattern Confidence</th><th>Validated At</th></tr></thead><tbody>';
+        html += '<table id="exportReadyTable"><thead><tr><th class="sortable" data-sort-key="name">Name</th><th class="sortable" data-sort-key="email">Email</th><th class="sortable" data-sort-key="title">Title</th><th class="sortable" data-sort-key="company">Company</th><th class="sortable" data-sort-key="city">City</th><th class="sortable" data-sort-key="state">State</th><th class="sortable" data-sort-key="pattern_confidence">Pattern Confidence</th><th class="sortable" data-sort-key="validated_at">Validated At</th></tr></thead><tbody>';
         for (const c of _readyForExportData) {
-            html += `<tr>
+            html += `<tr data-name="${escAttr(c.full_name||'')}" data-email="${escAttr(c.email||'')}" data-title="${escAttr(c.title||'')}" data-company="${escAttr(c.company_name||'')}" data-city="${escAttr(c.city||'')}" data-state="${escAttr(c.state||'')}" data-pattern_confidence="${escAttr(c.email_pattern_confidence||'')}" data-validated_at="${escAttr(c.smtp_validated_at||'')}">
                 <td>${esc(c.full_name)}</td>
                 <td style="font-family:monospace;font-size:0.8rem;">${esc(c.email)}</td>
                 <td>${esc(c.title || '-')}</td>
@@ -421,6 +495,7 @@ async function loadReadyForExport() {
         }
         html += '</tbody></table>';
         container.innerHTML = html;
+        wireEmailsTableSort('#exportReadyTable', 'name');
     } catch (e) {
         container.innerHTML = `<div class="msg msg-error">&#10060; Error: ${esc(e.message)}</div>`;
     }

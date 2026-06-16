@@ -57,6 +57,12 @@ tr.deleted-row td{text-decoration:line-through;color:#64748b}
 .toast-success{background:#22c55e}
 .toast-error{background:#ef4444}
 @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+/* Sortable column headers (added 2026-06-16) */
+th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:1.1rem;transition:background 0.15s}
+th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
+th.sortable::after{content:'⇅';position:absolute;right:0.4rem;top:50%;transform:translateY(-50%);color:#475569;font-size:0.75rem;opacity:0.5}
+th.sortable.sort-asc::after{content:'▲';color:#38bdf8;opacity:1}
+th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </style>
 </head>
 <body>
@@ -97,7 +103,7 @@ tr.deleted-row td{text-decoration:line-through;color:#64748b}
 </div>
 <div class="table-wrap">
 <table>
-<thead><tr><th>Name</th><th>City</th><th>State</th><th>Type</th><th>Website</th><th>Email Pattern</th><th>Contacts</th><th>Actions</th></tr></thead>
+<thead><tr><th class="sortable" data-sort-key="name">Name</th><th class="sortable" data-sort-key="city">City</th><th class="sortable" data-sort-key="state">State</th><th class="sortable" data-sort-key="business_type">Type</th><th>Website</th><th>Email Pattern</th><th class="sortable" data-sort-key="contact_count">Contacts</th><th>Actions</th></tr></thead>
 <tbody id="companiesTable"></tbody>
 </table>
 </div>
@@ -140,6 +146,58 @@ const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 let companiesData = [];
 let currentPatternCompanyId = null;
 let currentPatternCompany = null;
+// Sort state (added 2026-06-16)
+let currentSort = { key: 'name', dir: 'asc' };
+
+// Generic comparator for companies table
+function _compareValues(a, b, dir) {
+  const aNull = a === null || a === undefined || a === '';
+  const bNull = b === null || b === undefined || b === '';
+  if (aNull && bNull) return 0;
+  if (aNull) return 1;
+  if (bNull) return -1;
+  if (typeof a === 'number' && typeof b === 'number') {
+    return dir === 'asc' ? a - b : b - a;
+  }
+  const sa = String(a).toLowerCase();
+  const sb = String(b).toLowerCase();
+  if (sa < sb) return dir === 'asc' ? -1 : 1;
+  if (sa > sb) return dir === 'asc' ? 1 : -1;
+  return 0;
+}
+
+function sortCompanies(arr, key, dir) {
+  return arr.slice().sort((a, b) => _compareValues(a ? a[key] : null, b ? b[key] : null, dir));
+}
+
+function applyCompanySort() {
+  return sortCompanies(companiesData, currentSort.key, currentSort.dir);
+}
+
+function handleCompanySortClick(key) {
+  if (currentSort.key === key) {
+    currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSort.key = key;
+    const numericKeys = ['contact_count', 'rating', 'user_rating_count', 'quality_score'];
+    currentSort.dir = numericKeys.includes(key) ? 'desc' : 'asc';
+  }
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.getAttribute('data-sort-key') === key) {
+      th.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+  renderCompanies(applyCompanySort());
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => handleCompanySortClick(th.getAttribute('data-sort-key')));
+  });
+  const def = document.querySelector('th.sortable[data-sort-key="' + currentSort.key + '"]');
+  if (def) def.classList.add('sort-asc');
+});
 
 // Helpers
 function escapeHtml(s) {
@@ -328,12 +386,13 @@ async function loadCompanies() {
     const tbody = document.getElementById('companiesTable');
     tbody.innerHTML = '';
     companiesData = data.companies || [];
-    for (const c of companiesData) {
-      tbody.appendChild(renderRow(c));
-    }
     if (companiesData.length === 0) {
+      const tbody = document.getElementById('companiesTable');
       tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:2rem;">No companies found. Try adjusting your filters.</td></tr>';
+      return;
     }
+    // Re-render with the current sort applied
+    renderCompanies(applyCompanySort());
   } catch(e) {
     console.error('loadCompanies error:', e);
     showToast('Failed to load companies: ' + e.message, 'error');

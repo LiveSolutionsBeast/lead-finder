@@ -30,6 +30,12 @@ tr:hover td{background:#1e293b}
 .badge-local{background:#22c55e33;color:#22c55e}
 .badge-hq{background:#f59e0b33;color:#f59e0b}
 .badge-blue{background:#38bdf833;color:#38bdf8}
+/* Sortable column headers (added 2026-06-16) */
+th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:1.1rem;transition:background 0.15s}
+th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
+th.sortable::after{content:'⇅';position:absolute;right:0.4rem;top:50%;transform:translateY(-50%);color:#475569;font-size:0.75rem;opacity:0.5}
+th.sortable.sort-asc::after{content:'▲';color:#38bdf8;opacity:1}
+th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </style>
 </head>
 <body>
@@ -63,7 +69,7 @@ tr:hover td{background:#1e293b}
 </div>
 <div class="table-wrap">
 <table>
-<thead><tr><th>Session Key</th><th>Industry</th><th>City</th><th>State</th><th>Created</th><th>Actions</th></tr></thead>
+<thead><tr><th class="sortable" data-sort-key="session_key">Session Key</th><th class="sortable" data-sort-key="industry">Industry</th><th class="sortable" data-sort-key="city">City</th><th class="sortable" data-sort-key="state">State</th><th class="sortable" data-sort-key="created_at">Created</th><th>Actions</th></tr></thead>
 <tbody id="sessionsTable"></tbody>
 </table>
 </div>
@@ -80,6 +86,56 @@ tr:hover td{background:#1e293b}
 const API_BASE = '/api';
 const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 
+// Sortable column handler (added 2026-06-16) — for all 3 tables on this page
+function _compareValues(a, b, dir) {
+  const aNull = a === null || a === undefined || a === '';
+  const bNull = b === null || b === undefined || b === '';
+  if (aNull && bNull) return 0;
+  if (aNull) return 1;
+  if (bNull) return -1;
+  if (typeof a === 'number' && typeof b === 'number') {
+    return dir === 'asc' ? a - b : b - a;
+  }
+  const sa = String(a).toLowerCase();
+  const sb = String(b).toLowerCase();
+  if (sa < sb) return dir === 'asc' ? -1 : 1;
+  if (sa > sb) return dir === 'asc' ? 1 : -1;
+  return 0;
+}
+
+function sortByKey(arr, key, dir) {
+  return arr.slice().sort((a, b) => _compareValues(a ? a[key] : null, b ? b[key] : null, dir));
+}
+
+function wireSortableHeaders(table, sortState) {
+  // For a given table element, wire up click handlers on all th.sortable.
+  // sortState: { key, dir } shared across the page so all tables
+  // sorted by the same column stay consistent.
+  const ths = table.querySelectorAll('th.sortable');
+  ths.forEach(th => {
+    if (th.__wired) return;  // avoid double-binding
+    th.__wired = true;
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-sort-key');
+      if (sortState.key === key) {
+        sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortState.key = key;
+        const numericKeys = ['contact_count', 'confidence_score', 'rating', 'user_rating_count', 'quality_score'];
+        sortState.dir = numericKeys.includes(key) ? 'desc' : 'asc';
+      }
+      ths.forEach(t => {
+        t.classList.remove('sort-asc', 'sort-desc');
+        if (t.getAttribute('data-sort-key') === sortState.key) {
+          t.classList.add(sortState.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+      });
+      // Re-render: caller must re-fetch the rows and re-apply
+      table.dispatchEvent(new CustomEvent('sortchange', { detail: { key, dir: sortState.dir } }));
+    });
+  });
+}
+
 async function loadStats() {
   try {
     const r = await fetch(API_BASE+'/stats', {headers: {'X-LF-Key': API_KEY}});
@@ -91,9 +147,13 @@ async function loadStats() {
   } catch(e) { console.error('stats error:', e); }
 }
 
+// Sessions table sort state (added 2026-06-16)
+let sessionsSort = { key: 'created_at', dir: 'desc' };
+
 async function loadSessions() {
   const r = await fetch(API_BASE+'/sessions', {headers: {'X-LF-Key': API_KEY}});
-  const sessions = await r.json();
+  let sessions = await r.json();
+  sessions = sortByKey(sessions, sessionsSort.key, sessionsSort.dir);
   const perPage = parseInt(document.getElementById('perPage').value) || 20;
   const tbody = document.getElementById('sessionsTable');
   tbody.innerHTML = '';
@@ -103,6 +163,132 @@ async function loadSessions() {
     const s = sessions[i];
     const created = s.created_at ? s.created_at.substring(0,16).replace('T',' ') : '';
      tbody.innerHTML += '<tr><td style="font-family:monospace;color:#38bdf8;">'+s.session_key+'</td><td>'+s.industry+'</td><td>'+s.city+'</td><td>'+s.state+'</td><td>'+created+'</td><td><button class="btn btn-sm" onclick="loadSession(\''+s.session_key+'\')">View</button> <button class="btn btn-sm btn-orange" onclick="resumeSession(\''+s.session_key+'\')">Resume</button> <button class="btn btn-sm btn-green" onclick="exportSession(\''+s.session_key+'\')">Export</button></td></tr>';
+  }
+  // Wire up sortable headers on the main sessions table
+  const table = tbody.closest('table');
+  if (table) {
+    wireSortableHeaders(table, sessionsSort);
+    // Mark the current sort
+    table.querySelectorAll('th.sortable').forEach(t => {
+      t.classList.remove('sort-asc', 'sort-desc');
+      if (t.getAttribute('data-sort-key') === sessionsSort.key) {
+        t.classList.add(sessionsSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+    table.addEventListener('sortchange', () => loadSessions());
+  }
+}
+
+// Session-detail sub-table sort state (added 2026-06-16)
+let companiesSubSort = { key: 'name', dir: 'asc' };
+let contactsSubSort = { key: 'full_name', dir: 'asc' };
+let sessionDetailData = null;  // stored so sort can re-render
+
+function escapeAttr(s) { return String(s == null ? '' : s).replace(/'/g, "\\'"); }
+
+function renderCompaniesSubTable(companies, contacts) {
+  if (!companies || companies.length === 0) return '';
+  const ctMap = {};
+  for (const ct of (contacts || [])) { const cid = ct.company_id || 0; ctMap[cid] = (ctMap[cid]||0)+1; }
+  const rows = companies.map(c => {
+    const ctCount = (c.contact_count !== undefined) ? c.contact_count : (ctMap[c.id]||0);
+    const reBtn = '<button class="btn btn-sm btn-orange" onclick="reEnrichCompany(\''+escapeAttr(c.place_id)+'\', \''+escapeAttr(c.name)+'\', '+ctCount+')" title="Re-discover executives">Refresh</button>';
+    const fcBtn = (ctCount > 0)
+      ? '<button class="btn btn-sm btn-amber" onclick="findContacts(\''+escapeAttr(c.place_id)+'\', \''+escapeAttr(c.name)+'\', '+ctCount+')" title="'+ctCount+' contacts already found — click to re-discover">Find Contacts ('+ctCount+')</button>'
+      : '<button class="btn btn-sm btn-green" onclick="findContacts(\''+escapeAttr(c.place_id)+'\', \''+escapeAttr(c.name)+'\', 0)" title="Find contacts (initial discovery)">Find Contacts</button>';
+    return '<tr data-name="'+escapeAttr(c.name||'')+'" data-city="'+escapeAttr(c.city||'')+'" data-state="'+escapeAttr(c.state||'')+'" data-business_type="'+escapeAttr(c.business_type||'')+'" data-contact_count="'+ctCount+'">'
+      + '<td style="font-weight:600;">'+(c.name||'')+'</td>'
+      + '<td>'+(c.city||'')+'</td>'
+      + '<td>'+(c.state||'')+'</td>'
+      + '<td>'+(c.business_type||'')+'</td>'
+      + '<td>'+ctCount+'</td>'
+      + '<td>'+reBtn+' '+fcBtn+'</td></tr>';
+  }).join('');
+  return '<h3 style="margin-top:1rem;font-size:0.9rem;color:#94a3b8;margin-bottom:0.75rem;">Companies</h3>'
+    + '<div class="table-wrap"><table id="subCompaniesTable"><thead><tr>'
+    + '<th class="sortable" data-sort-key="name">Name</th>'
+    + '<th class="sortable" data-sort-key="city">City</th>'
+    + '<th class="sortable" data-sort-key="state">State</th>'
+    + '<th class="sortable" data-sort-key="business_type">Type</th>'
+    + '<th class="sortable" data-sort-key="contact_count">Contacts</th>'
+    + '<th>Actions</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function renderContactsSubTable(contacts) {
+  if (!contacts || contacts.length === 0) return '';
+  const rows = contacts.map(ct => {
+    const badge = ct.is_local ? '<span class="badge badge-local">LOCAL</span>' : '<span class="badge badge-hq">HQ</span>';
+    return '<tr data-full_name="'+escapeAttr(ct.full_name||'')+'" data-title="'+escapeAttr(ct.title||'')+'" data-company_name="'+escapeAttr(ct.company_name||'')+'" data-confidence_score="'+(ct.confidence_score||0)+'">'
+      + '<td>'+(ct.full_name||'')+'</td>'
+      + '<td>'+(ct.title||'-')+'</td>'
+      + '<td>'+(ct.company_name||'')+'</td>'
+      + '<td>'+badge+'</td>'
+      + '<td>'+((ct.confidence_score||0)*100).toFixed(0)+'%</td></tr>';
+  }).join('');
+  return '<h3 style="margin-top:1.5rem;font-size:0.9rem;color:#94a3b8;margin-bottom:0.75rem;">Contacts</h3>'
+    + '<div class="table-wrap"><table id="subContactsTable"><thead><tr>'
+    + '<th class="sortable" data-sort-key="full_name">Name</th>'
+    + '<th class="sortable" data-sort-key="title">Title</th>'
+    + '<th class="sortable" data-sort-key="company_name">Company</th>'
+    + '<th>Local</th>'
+    + '<th class="sortable" data-sort-key="confidence_score">Confidence</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function reSortSubTables() {
+  // Re-order rows in the embedded sub-tables based on the current sort.
+  for (const cfg of [{ sel: '#subCompaniesTable', state: companiesSubSort, map: c => ({
+      name: c.name, city: c.city, state: c.state,
+      business_type: c.business_type, contact_count: c.contact_count || 0,
+    }) }, { sel: '#subContactsTable', state: contactsSubSort, map: ct => ({
+      full_name: ct.full_name, title: ct.title, company_name: ct.company_name,
+      confidence_score: ct.confidence_score || 0,
+    }) }]) {
+    const tbl = document.querySelector(cfg.sel);
+    if (!tbl) continue;
+    const tbody = tbl.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a, b) => {
+      const av = a.getAttribute('data-' + cfg.state.key);
+      const bv = b.getAttribute('data-' + cfg.state.key);
+      // numeric coercion
+      const an = parseFloat(av), bn = parseFloat(bv);
+      if (!isNaN(an) && !isNaN(bn) && /^-?[\d.]+$/.test(av) && /^-?[\d.]+$/.test(bv)) {
+        return cfg.state.dir === 'asc' ? an - bn : bn - an;
+      }
+      const sa = (av || '').toLowerCase();
+      const sb = (bv || '').toLowerCase();
+      if (sa < sb) return cfg.state.dir === 'asc' ? -1 : 1;
+      if (sa > sb) return cfg.state.dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    // Update header indicators
+    tbl.querySelectorAll('th.sortable').forEach(t => {
+      t.classList.remove('sort-asc', 'sort-desc');
+      if (t.getAttribute('data-sort-key') === cfg.state.key) {
+        t.classList.add(cfg.state.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+  }
+}
+
+function wireSubTableSort() {
+  // Wire up sort for both embedded tables; the sort change triggers
+  // reSortSubTables() to re-order rows in place.
+  for (const cfg of [{ sel: '#subCompaniesTable', state: companiesSubSort }, { sel: '#subContactsTable', state: contactsSubSort }]) {
+    const tbl = document.querySelector(cfg.sel);
+    if (!tbl) continue;
+    wireSortableHeaders(tbl, cfg.state);
+    // Mark default sort
+    tbl.querySelectorAll('th.sortable').forEach(t => {
+      t.classList.remove('sort-asc', 'sort-desc');
+      if (t.getAttribute('data-sort-key') === cfg.state.key) {
+        t.classList.add(cfg.state.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+    tbl.addEventListener('sortchange', reSortSubTables);
   }
 }
 
@@ -114,34 +300,16 @@ async function loadSession(sk) {
     const detail = document.getElementById('sessionDetail');
     detail.classList.remove('hidden');
     document.getElementById('detailTitle').textContent = 'Session: '+data.session.industry+' in '+data.session.city+', '+data.session.state;
+    // Store data for sort re-renders
+    sessionDetailData = data;
     let html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem;"><div class="stat-card"><div class="stat-value">'+(data.companies.length||0)+'</div><div class="stat-label">Companies</div></div><div class="stat-card"><div class="stat-value">'+(data.contacts.length||0)+'</div><div class="stat-label">Contacts</div></div></div>';
     // Add Re-Enrich All button
     html += '<div style="margin-bottom:1rem;"><button class="btn btn-orange" onclick="reEnrichAll()">Refresh Contacts</button> <span style="color:#64748b;font-size:0.8rem;">Re-runs executive discovery for all companies</span></div>';
-    if (data.companies.length > 0) {
-      html += '<h3 style="margin-top:1rem;font-size:0.9rem;color:#94a3b8;margin-bottom:0.75rem;">Companies</h3><div class="table-wrap"><table><thead><tr><th>Name</th><th>City</th><th>State</th><th>Type</th><th>Contacts</th><th>Actions</th></tr></thead><tbody>';
-      const ctMap = {};
-      for (const ct of data.contacts) { const cid = ct.company_id||0; ctMap[cid] = (ctMap[cid]||0)+1; }
-      for (const c of data.companies) {
-        // Prefer server-provided contact_count (Issue #1); fall back to client map
-        const ctCount = (c.contact_count !== undefined) ? c.contact_count : (ctMap[c.id]||0);
-        const reBtn = '<button class="btn btn-sm btn-orange" onclick="reEnrichCompany(\''+c.place_id+'\', \''+c.name.replace(/'/g,"\\'")+'\', '+ctCount+')" title="Re-discover executives">Refresh</button>';
-        // Issue #1: show count on button + confirm before re-running when contacts exist
-        const fcBtn = (ctCount > 0)
-          ? '<button class="btn btn-sm btn-amber" onclick="findContacts(\''+c.place_id+'\', \''+c.name.replace(/'/g,"\\'")+'\', '+ctCount+')" title="'+ctCount+' contacts already found — click to re-discover">Find Contacts ('+ctCount+')</button>'
-          : '<button class="btn btn-sm btn-green" onclick="findContacts(\''+c.place_id+'\', \''+c.name.replace(/'/g,"\\'")+'\', 0)" title="Find contacts (initial discovery)">Find Contacts</button>';
-        html += '<tr><td style="font-weight:600;">'+c.name+'</td><td>'+(c.city||'')+'</td><td>'+c.state+'</td><td>'+(c.business_type||'')+'</td><td>'+ctCount+'</td><td>'+reBtn+' '+fcBtn+'</td></tr>';
-      }
-      html += '</tbody></table></div>';
-    }
-    if (data.contacts.length > 0) {
-      html += '<h3 style="margin-top:1.5rem;font-size:0.9rem;color:#94a3b8;margin-bottom:0.75rem;">Contacts</h3><div class="table-wrap"><table><thead><tr><th>Name</th><th>Title</th><th>Company</th><th>Local</th><th>Confidence</th></tr></thead><tbody>';
-      for (const ct of data.contacts) {
-        const badge = ct.is_local ? '<span class="badge badge-local">LOCAL</span>' : '<span class="badge badge-hq">HQ</span>';
-        html += '<tr><td>'+ct.full_name+'</td><td>'+(ct.title||'-')+'</td><td>'+(ct.company_name||'')+'</td><td>'+badge+'</td><td>'+((ct.confidence_score||0)*100).toFixed(0)+'%</td></tr>';
-      }
-      html += '</tbody></table></div>';
-    }
+    html += renderCompaniesSubTable(data.companies, data.contacts);
+    html += renderContactsSubTable(data.contacts);
     document.getElementById('detailContent').innerHTML = html;
+    // Wire up sorting for the newly-rendered sub-tables
+    wireSubTableSort();
   } catch(e) { console.error(e); }
 }
 
