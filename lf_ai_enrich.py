@@ -12,7 +12,7 @@ Two distinct use cases (per user spec 2026-06-06):
 Both run via the same cloud-model fallback chain:
   Primary:   minimax-m3:cloud       (fast, free, default)
   Fallback 1: deepseek-v4-pro:cloud  (more reasoning power)
-  Fallback 2: glm-5.2:cloud          (alternative reasoning)
+   Fallback 2: deepseek-v4-flash:cloud  (fast fallback)
 
 If ALL cloud models fail, callers fall back to regex/string matching.
 AI is ADDITIVE only — failures NEVER break the pipeline.
@@ -74,7 +74,7 @@ def cloud_model_fallback_1() -> str:
 
 
 def cloud_model_fallback_2() -> str:
-    return get("ai_cloud_model_fallback_2", "glm-5.2:cloud")
+    return get("ai_cloud_model_fallback_2", "deepseek-v4-flash:cloud")
 
 
 def cloud_model_chain() -> list[str]:
@@ -856,7 +856,7 @@ def ai_infer_email_pattern_v2(
     industry: str = "",
     city: str = "",
     state: str = "",
-    timeout: int = 25,
+    timeout: int = 15,
     quick: bool = False,
 ) -> Optional[dict]:
     """

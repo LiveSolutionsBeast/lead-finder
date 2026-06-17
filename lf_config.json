@@ -29,7 +29,7 @@
   "ai_ollama_url": "http://localhost:11434",
   "ai_cloud_model_primary": "minimax-m3:cloud",
   "ai_cloud_model_fallback_1": "deepseek-v4-pro:cloud",
-  "ai_cloud_model_fallback_2": "glm-5.2:cloud",
+  "ai_cloud_model_fallback_2": "deepseek-v4-flash:cloud",
   "ai_enrichment_enabled": true,
   "ai_sanity_check_enabled": true,
   "ai_timeout_seconds": 30,

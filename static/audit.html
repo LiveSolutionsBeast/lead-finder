@@ -151,6 +151,7 @@ input[type="checkbox"]{accent-color:#38bdf8;width:16px;height:16px;cursor:pointe
 <button class="btn btn-sm btn-blue" onclick="bulkDiscoverPatterns()" title="Discover email patterns for selected companies">✉ Discover Patterns</button>
 <button class="btn btn-sm btn-red" onclick="bulkDeleteNoPat()" title="Delete selected companies">✕ Delete</button>
 <button class="btn btn-sm btn-slate" onclick="clearSelection('noPat')" title="Deselect all">Clear</button>
+<span id="noPatProgress" style="color:#38bdf8;font-size:0.8rem;font-weight:600;margin-left:0.5rem;"></span>
 </div>
 <div class="table-wrap">
 <table class="nopat">
@@ -343,18 +344,20 @@ async function bulkDiscoverPatterns() {
   if (!ids.length) return;
   if (!confirm('Discover email patterns for '+ids.length+' companies?')) return;
   const info = document.getElementById('actionInfo');
-  info.textContent = 'Starting pattern discovery...';
+  const prog = document.getElementById('noPatProgress');
+  const setProgress = (msg) => { info.textContent = msg; prog.textContent = msg; };
+  setProgress('Starting pattern discovery...');
   try {
-    const r = await fetch(API_BASE+'/companies/bulk-discover-patterns', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids, quick:true})});
+    const r = await fetch(API_BASE+'/companies/bulk-discover-patterns', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids, quick:false})});
     if (!r.ok) {
       const d = await r.json().catch(()=>({}));
-      info.textContent = 'Error: ' + (d.detail || r.statusText);
+      setProgress('Error: ' + (d.detail || r.statusText));
       return;
     }
     const d = await r.json();
-    if (d.status === 'no_work') { info.textContent = 'No companies need patterns.'; return; }
+    if (d.status === 'no_work') { setProgress('No companies need patterns.'); return; }
     const jobId = d.job_id;
-    info.textContent = 'Discovering patterns... (0/' + d.total + ')';
+    setProgress('Discovering patterns... (0/' + d.total + ')');
     // Poll every 3 seconds using setInterval (non-blocking)
     if (patdiscPollTimer) clearInterval(patdiscPollTimer);
     patdiscPollTimer = setInterval(async () => {
@@ -364,15 +367,16 @@ async function bulkDiscoverPatterns() {
         const jd = await jr.json();
         const done = jd.done || 0;
         const total = jd.total || d.total;
-        info.textContent = 'Discovering patterns... (' + done + '/' + total + ')';
+        const pct = Math.round(done/total*100);
+        setProgress('Discovering patterns... (' + done + '/' + total + ' — ' + pct + '%)');
         if (jd.status === 'completed' || jd.status === 'failed') {
           clearInterval(patdiscPollTimer);
           patdiscPollTimer = null;
           const results = jd.results || {};
           if (jd.status === 'completed') {
-            info.textContent = 'Done: '+(results.patterns_found||0)+' patterns found, '+(results.not_found||0)+' not found, '+(results.errors||0)+' errors';
+            setProgress('Done: '+(results.patterns_found||0)+' patterns found, '+(results.not_found||0)+' not found, '+(results.errors||0)+' errors');
           } else {
-            info.textContent = 'Pattern discovery failed after '+done+' companies';
+            setProgress('Pattern discovery failed after '+done+' companies');
           }
           clearSelection('noPat');
           loadAudit();
