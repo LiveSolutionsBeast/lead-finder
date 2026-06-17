@@ -857,6 +857,7 @@ def ai_infer_email_pattern_v2(
     city: str = "",
     state: str = "",
     timeout: int = 25,
+    quick: bool = False,
 ) -> Optional[dict]:
     """
     Email pattern inference with a 3-step INTERNAL reasoning loop
@@ -903,43 +904,58 @@ def ai_infer_email_pattern_v2(
     # search-result snippets to the AI as evidence. The AI still makes the final
     # pattern decision; we do NOT extract emails directly from SearXNG results.
     # Lazy import to avoid circular dependencies.
+    # quick=True skips SearXNG entirely (for bulk operations — saves 90s per company)
     search_snippets = []
-    try:
-        from lf_search_providers import search as _searx_search
-        search_queries = [
-            # Direct email mentions on the company domain
-            f'"@{domain}" "{company_name}"',
-            f'site:{domain} "@" email contact',
-            # Pattern database / contact-intelligence pages
-            f'"{company_name}" email format pattern',
-            f'"{company_name}" "{domain}" "email format"',
-            # LinkedIn / job postings often expose real employee emails
-            f'"{company_name}" "@{domain}" -site:{domain}',
-            f'"{domain}" "General Dynamics" "email" format',
-        ]
-        seen_snippets = set()
-        for q in search_queries:
-            try:
-                results, _provider = _searx_search(q, timeout=15, prefer="searxng", ai_extract=False)
-                for r in results:
-                    # Results may be dicts or dataclass objects
-                    title = r.get("title") if isinstance(r, dict) else getattr(r, "title", "")
-                    snippet = r.get("snippet") if isinstance(r, dict) else getattr(r, "snippet", "")
-                    url = r.get("url") if isinstance(r, dict) else getattr(r, "url", "")
-                    text = " ".join(filter(None, [title, snippet, url])).strip()
-                    if not text or text in seen_snippets:
-                        continue
-                    seen_snippets.add(text)
-                    # Keep snippets that mention the domain or look like pattern sources
-                    lower = text.lower()
-                    if domain in lower or "email format" in lower or "email pattern" in lower or "leadiq" in lower or "rocketreach" in lower or "neverbounce" in lower:
-                        search_snippets.append(text)
-            except Exception:
-                continue
-        # Limit context window
-        search_snippets = search_snippets[:12]
-    except Exception:
-        search_snippets = []
+    if quick:
+        logger.info(f"ai_infer_email_pattern_v2: quick mode — skipping SearXNG for {company_name}")
+    else:
+        try:
+            from lf_search_providers import search as _searx_search
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            search_queries = [
+                # Direct email mentions on the company domain
+                f'"@{domain}" "{company_name}"',
+                f'site:{domain} "@" email contact',
+                # Pattern database / contact-intelligence pages
+                f'"{company_name}" email format pattern',
+                f'"{company_name}" "{domain}" "email format"',
+                # LinkedIn / job postings often expose real employee emails
+                f'"{company_name}" "@{domain}" -site:{domain}',
+                # Use actual company name (was hardcoded "General Dynamics")
+                f'"{domain}" "{company_name}" "email" format',
+            ]
+
+            # Run all 6 queries in parallel (8s timeout each, ~8s total instead of ~90s)
+            def _run_query(q):
+                try:
+                    results, _ = _searx_search(q, timeout=8, prefer="searxng", ai_extract=False)
+                    hits = []
+                    for r in results:
+                        title = r.get("title") if isinstance(r, dict) else getattr(r, "title", "")
+                        snippet = r.get("snippet") if isinstance(r, dict) else getattr(r, "snippet", "")
+                        url = r.get("url") if isinstance(r, dict) else getattr(r, "url", "")
+                        text = " ".join(filter(None, [title, snippet, url])).strip()
+                        if text:
+                            hits.append(text)
+                    return hits
+                except Exception:
+                    return []
+
+            seen_snippets = set()
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                futures = {pool.submit(_run_query, q): q for q in search_queries}
+                for future in as_completed(futures):
+                    for text in future.result():
+                        if text in seen_snippets:
+                            continue
+                        seen_snippets.add(text)
+                        lower = text.lower()
+                        if domain in lower or "email format" in lower or "email pattern" in lower or "leadiq" in lower or "rocketreach" in lower or "neverbounce" in lower:
+                            search_snippets.append(text)
+            # Limit context window
+            search_snippets = search_snippets[:12]
+        except Exception:
+            search_snippets = []
 
     # Top 10 most common corporate email patterns
     canonical_patterns_text = """\
