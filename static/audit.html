@@ -8,29 +8,73 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#f1f5f9;min-height:100vh}
-.app{max-width:1200px;margin:0 auto;padding:2rem}
+.app{max-width:1400px;margin:0 auto;padding:2rem}
 .nav{display:flex;gap:0.5rem;margin-bottom:2rem;flex-wrap:wrap}
 .nav a{padding:0.6rem 1.2rem;background:#1e293b;color:#94a3b8;text-decoration:none;border-radius:6px;font-size:0.9rem;transition:all 0.2s}
 .nav a:hover,.nav a.active{background:#38bdf8;color:#0f172a;font-weight:600}
 .card{background:#1e293b;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
 .card h2{font-size:1rem;color:#94a3b8;margin-bottom:1rem;text-transform:uppercase;letter-spacing:0.05em}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.5rem}
 .stat-card{background:#1e293b;border-radius:10px;padding:1.2rem;text-align:center;border-left:4px solid #38bdf8}
 .stat-value{font-size:2rem;font-weight:700;color:#38bdf8}
 .stat-label{font-size:0.8rem;color:#64748b;text-transform:uppercase;margin-top:0.3rem}
 .stat-card.warning{border-left-color:#f59e0b}
 .stat-card.error{border-left-color:#ef4444}
 .stat-card.success{border-left-color:#22c55e}
+.btn{padding:0.5rem 1.2rem;background:#38bdf8;color:#0f172a;border:none;border-radius:6px;font-size:0.85rem;font-weight:600;cursor:pointer}
+.btn-sm{padding:2px 5px;font-size:0.7rem;border-radius:3px;cursor:pointer;border:none;font-weight:600;min-width:20px;min-height:20px;text-align:center;line-height:1}
+.btn-red{background:#ef4444;color:#fff}
+.btn-green{background:#22c55e;color:#fff}
+.btn-orange{background:#f59e0b;color:#fff}
+.btn-blue{background:#38bdf8;color:#0f172a}
+.btn-purple{background:#8b5cf6;color:#fff}
+.btn-slate{background:#334155;color:#94a3b8}
 .table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:0.9rem}
-th{text-align:left;padding:0.75rem 1rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.75rem;text-transform:uppercase}
-td{padding:0.75rem 1rem;border-bottom:1px solid #1e293b}
+table{width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed}
+th{text-align:left;padding:0.5rem 0.6rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.7rem;text-transform:uppercase;white-space:nowrap;overflow:hidden}
+td{padding:0.5rem 0.6rem;border-bottom:1px solid #1e293b;overflow:hidden;text-overflow:ellipsis}
 tr:hover td{background:#1e293b}
-.badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600}
+.badge{display:inline-block;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;font-weight:600}
 .badge-red{background:#ef444433;color:#ef4444}
 .badge-yellow{background:#f59e0b33;color:#f59e0b}
 .badge-green{background:#22c55e33;color:#22c55e}
 .empty-msg{text-align:center;color:#94a3b8;padding:2rem;font-style:italic}
+/* Checkboxes */
+input[type="checkbox"]{accent-color:#38bdf8;width:16px;height:16px;cursor:pointer;padding:0;background:transparent;border:none;min-width:0}
+/* Bulk bar */
+.bulk-bar{display:none;align-items:center;gap:0.5rem;margin-bottom:0.5rem;padding:0.6rem 1rem;background:#0f172a;border-radius:6px;border:1px solid #334155}
+.bulk-bar.active{display:flex}
+.bulk-count{color:#38bdf8;font-size:0.85rem;font-weight:600}
+/* Column widths per bucket */
+.nott-title td:nth-child(1),.nott-title th:nth-child(1){width:30px;text-align:center;overflow:visible}
+.nott-title td:nth-child(2),.nott-title th:nth-child(2){width:22%}
+.nott-title td:nth-child(3),.nott-title th:nth-child(3){width:20%}
+.nott-title td:nth-child(4),.nott-title th:nth-child(4){width:15%}
+.nott-title td:nth-child(5),.nott-title th:nth-child(5){width:8%}
+.nott-title td:nth-child(6),.nott-title th:nth-child(6){width:8%}
+.nott-title td:nth-child(7),.nott-title th:nth-child(7){width:19%;overflow:visible}
+.lowconf td:nth-child(1),.lowconf th:nth-child(1){width:30px;text-align:center;overflow:visible}
+.lowconf td:nth-child(2),.lowconf th:nth-child(2){width:20%}
+.lowconf td:nth-child(3),.lowconf th:nth-child(3){width:15%}
+.lowconf td:nth-child(4),.lowconf th:nth-child(4){width:20%}
+.lowconf td:nth-child(5),.lowconf th:nth-child(5){width:8%}
+.lowconf td:nth-child(6),.lowconf th:nth-child(6){width:8%}
+.lowconf td:nth-child(7),.lowconf th:nth-child(7){width:19%;overflow:visible}
+.nopat td:nth-child(1),.nopat th:nth-child(1){width:30px;text-align:center;overflow:visible}
+.nopat td:nth-child(2),.nopat th:nth-child(2){width:22%}
+.nopat td:nth-child(3),.nopat th:nth-child(3){width:15%}
+.nopat td:nth-child(4),.nopat th:nth-child(4){width:8%}
+.nopat td:nth-child(5),.nopat th:nth-child(5){width:20%}
+.nopat td:nth-child(6),.nopat th:nth-child(6){width:15%}
+.nopat td:nth-child(7),.nopat th:nth-child(7){width:20%;overflow:visible}
+.webq td:nth-child(1),.webq th:nth-child(1){width:30px;text-align:center;overflow:visible}
+.webq td:nth-child(2),.webq th:nth-child(2){width:20%}
+.webq td:nth-child(3),.webq th:nth-child(3){width:15%}
+.webq td:nth-child(4),.webq th:nth-child(4){width:20%}
+.webq td:nth-child(5),.webq th:nth-child(5){width:15%}
+.webq td:nth-child(6),.webq th:nth-child(6){width:10%}
+.webq td:nth-child(7),.webq th:nth-child(7){width:20%;overflow:visible}
+.action-group{display:inline-flex;gap:2px;flex-wrap:nowrap;align-items:center}
 </style>
 </head>
 <body>
@@ -41,10 +85,10 @@ tr:hover td{background:#1e293b}
 <a href="/finder/companies">Companies</a>
 <a href="/finder/contacts">Contacts</a>
 <a href="/finder/emails">&#9993; Email Validation</a>
-  <a href="/finder/audit" class="active">Audit</a>
+<a href="/finder/audit" class="active">Audit</a>
 <span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;font-size:0.8rem;">
   <span style="color:#22c55e;">P1-P5 ✓</span>
-  <span style="background:#22c55e33;color:#22c55e;padding:0.3rem 0.6rem;border-radius:4px;font-weight:600;" title="AI Enrichment enabled (added 2026-06-06)">QC-10 AI ✓</span>
+  <span style="background:#22c55e33;color:#22c55e;padding:0.3rem 0.6rem;border-radius:4px;font-weight:600;">QC-10 AI ✓</span>
 </span>
 </div>
 
@@ -52,48 +96,87 @@ tr:hover td{background:#1e293b}
 
 <div class="card">
 <h2>Actions</h2>
-<div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-<button class="btn btn-orange" onclick="backfillWebsites()">Backfill Missing Websites</button>
-<button class="btn" onclick="loadAudit()">Refresh Audit</button>
-<span style="color:#94a3b8;font-size:0.8rem;align-self:center;" id="actionInfo"></span>
+<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+<button class="btn btn-orange btn-sm" onclick="backfillWebsites()" title="Backfill missing websites via Google Places API">Backfill Missing Websites</button>
+<button class="btn btn-sm" onclick="loadAudit()" title="Reload all audit data">Refresh Audit</button>
+<span style="color:#94a3b8;font-size:0.8rem;" id="actionInfo"></span>
 </div>
 </div>
 
+<!-- Bucket 1: Contacts With No Titles -->
 <div class="card">
 <h2>Contacts With No Titles</h2>
+<div class="bulk-bar" id="notTitleBulkBar">
+<span class="bulk-count" id="notTitleBulkCount">0 selected</span>
+<button class="btn btn-sm btn-purple" onclick="bulkVerifyTitles()" title="AI-verify titles for selected contacts">⚡ Verify Titles</button>
+<button class="btn btn-sm btn-red" onclick="bulkDeleteNotTitle()" title="Delete selected contacts">✕ Delete</button>
+<button class="btn btn-sm btn-slate" onclick="clearSelection('notTitle')" title="Deselect all">Clear</button>
+</div>
 <div class="table-wrap">
-<table>
-<thead><tr><th>Name</th><th>Company</th><th>City</th><th>Confidence</th><th>LinkedIn</th><th>Actions</th></tr></thead>
+<table class="nott-title">
+<thead><tr>
+<th><input type="checkbox" id="notTitleSelectAll" onchange="toggleSelectAll('notTitle')" title="Select all" /></th>
+<th>Name</th><th>Company</th><th>City</th><th>Conf</th><th>LinkedIn</th><th>Actions</th>
+</tr></thead>
 <tbody id="noTitleTable"></tbody>
 </table>
 </div>
 </div>
 
+<!-- Bucket 2: Low Confidence Contacts -->
 <div class="card">
 <h2>Low Confidence Contacts (&lt; 0.6)</h2>
+<div class="bulk-bar" id="lowConfBulkBar">
+<span class="bulk-count" id="lowConfBulkCount">0 selected</span>
+<button class="btn btn-sm btn-purple" onclick="bulkVerifyLowConf()" title="AI-verify titles for selected contacts">⚡ Verify Titles</button>
+<button class="btn btn-sm btn-red" onclick="bulkDeleteLowConf()" title="Delete selected contacts">✕ Delete</button>
+<button class="btn btn-sm btn-slate" onclick="clearSelection('lowConf')" title="Deselect all">Clear</button>
+</div>
 <div class="table-wrap">
-<table>
-<thead><tr><th>Name</th><th>Title</th><th>Company</th><th>Confidence</th><th>LinkedIn</th><th>Actions</th></tr></thead>
+<table class="lowconf">
+<thead><tr>
+<th><input type="checkbox" id="lowConfSelectAll" onchange="toggleSelectAll('lowConf')" title="Select all" /></th>
+<th>Name</th><th>Title</th><th>Company</th><th>Conf</th><th>LinkedIn</th><th>Actions</th>
+</tr></thead>
 <tbody id="lowConfTable"></tbody>
 </table>
 </div>
 </div>
 
+<!-- Bucket 3: Companies Without Email Patterns -->
 <div class="card">
 <h2>Companies Without Email Patterns</h2>
+<div class="bulk-bar" id="noPatBulkBar">
+<span class="bulk-count" id="noPatBulkCount">0 selected</span>
+<button class="btn btn-sm btn-blue" onclick="bulkDiscoverPatterns()" title="Discover email patterns for selected companies">✉ Discover Patterns</button>
+<button class="btn btn-sm btn-red" onclick="bulkDeleteNoPat()" title="Delete selected companies">✕ Delete</button>
+<button class="btn btn-sm btn-slate" onclick="clearSelection('noPat')" title="Deselect all">Clear</button>
+</div>
 <div class="table-wrap">
-<table>
-<thead><tr><th>Company</th><th>City</th><th>Contacts</th><th>Website</th><th>Domain</th><th>Actions</th></tr></thead>
+<table class="nopat">
+<thead><tr>
+<th><input type="checkbox" id="noPatSelectAll" onchange="toggleSelectAll('noPat')" title="Select all" /></th>
+<th>Company</th><th>City</th><th>Contacts</th><th>Website</th><th>Domain</th><th>Actions</th>
+</tr></thead>
 <tbody id="noPatternTable"></tbody>
 </table>
 </div>
 </div>
 
+<!-- Bucket 4: Website & Domain Quality -->
 <div class="card">
 <h2>Website &amp; Domain Quality</h2>
+<div class="bulk-bar" id="webqBulkBar">
+<span class="bulk-count" id="webqBulkCount">0 selected</span>
+<button class="btn btn-sm btn-red" onclick="bulkDeleteWebQ()" title="Delete selected companies">✕ Delete</button>
+<button class="btn btn-sm btn-slate" onclick="clearSelection('webq')" title="Deselect all">Clear</button>
+</div>
 <div class="table-wrap">
-<table>
-<thead><tr><th>Company</th><th>City</th><th>Website</th><th>Domain</th><th>Status</th><th>Actions</th></tr></thead>
+<table class="webq">
+<thead><tr>
+<th><input type="checkbox" id="webqSelectAll" onchange="toggleSelectAll('webq')" title="Select all" /></th>
+<th>Company</th><th>City</th><th>Website</th><th>Domain</th><th>Status</th><th>Actions</th>
+</tr></thead>
 <tbody id="websiteQualityTable"></tbody>
 </table>
 </div>
@@ -105,18 +188,42 @@ tr:hover td{background:#1e293b}
 const API_BASE = '/api';
 const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 
+// ── Selection state per bucket ──
+const selections = { notTitle: new Set(), lowConf: new Set(), noPat: new Set(), webq: new Set() };
+const allData = { notTitle: [], lowConf: [], noPat: [], webq: [] };
+
 function escapeHtml(s) {
   if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function emptyRow(tbody, colspan, msg) {
-  tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="empty-msg">' + escapeHtml(msg) + '</td></tr>';
+function toggleSelectAll(bucket) {
+  const cb = document.getElementById(bucket === 'notTitle' ? 'notTitleSelectAll' : bucket === 'lowConf' ? 'lowConfSelectAll' : bucket === 'noPat' ? 'noPatSelectAll' : 'webqSelectAll').checked;
+  selections[bucket].clear();
+  if (cb) allData[bucket].forEach(item => selections[bucket].add(item.id));
+  document.querySelectorAll('.' + bucket + '-cb').forEach(c => c.checked = cb);
+  updateBulkUI(bucket);
+}
+
+function toggleItem(bucket, id, checked) {
+  checked ? selections[bucket].add(id) : selections[bucket].delete(id);
+  updateBulkUI(bucket);
+}
+
+function clearSelection(bucket) {
+  selections[bucket].clear();
+  const allId = bucket === 'notTitle' ? 'notTitleSelectAll' : bucket === 'lowConf' ? 'lowConfSelectAll' : bucket === 'noPat' ? 'noPatSelectAll' : 'webqSelectAll';
+  document.getElementById(allId).checked = false;
+  document.querySelectorAll('.' + bucket + '-cb').forEach(c => c.checked = false);
+  updateBulkUI(bucket);
+}
+
+function updateBulkUI(bucket) {
+  const n = selections[bucket].size;
+  const barId = bucket === 'notTitle' ? 'notTitleBulkBar' : bucket === 'lowConf' ? 'lowConfBulkBar' : bucket === 'noPat' ? 'noPatBulkBar' : 'webqBulkBar';
+  const countId = bucket === 'notTitle' ? 'notTitleBulkCount' : bucket === 'lowConf' ? 'lowConfBulkCount' : bucket === 'noPat' ? 'noPatBulkCount' : 'webqBulkCount';
+  document.getElementById(countId).textContent = n + ' selected';
+  document.getElementById(barId).classList.toggle('active', n > 0);
 }
 
 function extractDomain(url) {
@@ -124,182 +231,264 @@ function extractDomain(url) {
   try {
     let u = url.trim();
     if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
-    const parsed = new URL(u);
-    return parsed.hostname.replace(/^www\./, '');
-  } catch(e) {
-    const m = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\?#]+)/i);
-    return m ? m[1] : url;
+    return new URL(u).hostname.replace(/^www\./, '');
+  } catch(e) { const m = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\?#]+)/i); return m ? m[1] : url; }
+}
+
+// ── Contact row actions (compact icons) ──
+function contactActions(ct, bucket) {
+  let html = '<div class="action-group">';
+  html += '<button class="btn-sm btn-green" title="Edit on Contacts page" onclick="window.open(\'/finder/contacts\',\'_blank\')">&#9998;</button>';
+  html += '<button class="btn-sm btn-red" title="Soft-delete contact" onclick="deleteContactFromAudit('+ct.id+',\''+escapeHtml(ct.full_name).replace(/'/g,"\\'")+'\')">&#10005;</button>';
+  html += '<button class="btn-sm btn-purple" title="AI-verify title" onclick="verifySingleTitle('+ct.id+')">&#9733;</button>';
+  html += '</div>';
+  return html;
+}
+
+// ── Company row actions (compact icons) ──
+function companyActions(c, bucket) {
+  let html = '<div class="action-group">';
+  html += '<button class="btn-sm btn-green" title="Edit on Companies page" onclick="window.open(\'/finder/companies\',\'_blank\')">&#9998;</button>';
+  html += '<button class="btn-sm btn-red" title="Soft-delete company" onclick="deleteCompanyFromAudit('+c.id+',\''+escapeHtml(c.name).replace(/'/g,"\\'")+'\')">&#10005;</button>';
+  if (!c.email_pattern) {
+    html += '<button class="btn-sm btn-blue" title="Discover email pattern" onclick="discoverPattern('+c.id+')">&#9993;</button>';
   }
+  html += '</div>';
+  return html;
 }
 
-function contactActions(ct) {
-  const li = ct.linkedin_url ? '<a href="'+escapeHtml(ct.linkedin_url)+'" target="_blank" style="color:#38bdf8;text-decoration:none;" title="'+escapeHtml(ct.linkedin_url)+'">&#x1F517;</a>' : '<span style="color:#64748b;">—</span>';
-  const editBtn = '<button class="btn-sm btn-green" onclick="window.open(\'/finder/contacts\',\'_blank\')" title="Edit in Contacts page">&#9998;</button>';
-  const delBtn = '<button class="btn-sm btn-red" onclick="deleteContactFromAudit('+ct.id+',\''+escapeHtml(ct.full_name).replace(/'/g,"\\'")+'\')" title="Soft-delete contact">&#128465;</button>';
-  return li + ' ' + editBtn + ' ' + delBtn;
-}
-
-function companyActions(c) {
-  const editBtn = '<button class="btn-sm btn-green" onclick="window.open(\'/finder/companies\',\'_blank\')" title="Edit in Companies page">&#9998;</button>';
-  const delBtn = '<button class="btn-sm btn-red" onclick="deleteCompanyFromAudit('+c.id+',\''+escapeHtml(c.name).replace(/'/g,"\\'")+'\')" title="Soft-delete company">&#128465;</button>';
-  return editBtn + ' ' + delBtn;
-}
-
+// ── Single item actions ──
 async function deleteContactFromAudit(id, name) {
-  if (!confirm('Soft-delete "'+name+'"?\n\nIt will be hidden but recoverable.')) return;
-  const r = await fetch(API_BASE+'/contact/'+id, {method: 'DELETE', headers: {'X-LF-Key': API_KEY}});
-  if (r.ok) {
-    alert('Contact deleted. Refreshing audit...');
-    loadAudit();
-  } else {
-    const d = await r.json();
-    alert('Delete failed: '+(d.detail||'unknown'));
-  }
+  if (!confirm('Soft-delete "'+name+'"?')) return;
+  const r = await fetch(API_BASE+'/contact/'+id, {method:'DELETE', headers:{'X-LF-Key':API_KEY}});
+  if (r.ok) { loadAudit(); } else { alert('Delete failed'); }
 }
 
 async function deleteCompanyFromAudit(id, name) {
-  if (!confirm('Soft-delete "'+name+'"?\n\nIt will be hidden but recoverable.')) return;
-  const r = await fetch(API_BASE+'/company/'+id, {method: 'DELETE', headers: {'X-LF-Key': API_KEY}});
-  if (r.ok) {
-    alert('Company deleted. Refreshing audit...');
-    loadAudit();
-  } else {
-    const d = await r.json();
-    alert('Delete failed: '+(d.detail||'unknown'));
-  }
+  if (!confirm('Soft-delete "'+name+'"?')) return;
+  const r = await fetch(API_BASE+'/company/'+id, {method:'DELETE', headers:{'X-LF-Key':API_KEY}});
+  if (r.ok) { loadAudit(); } else { alert('Delete failed'); }
 }
 
+async function verifySingleTitle(contactId) {
+  try {
+    const r = await fetch(API_BASE+'/contact/'+contactId+'/verify-title', {method:'POST', headers:{'X-LF-Key':API_KEY}});
+    const d = await r.json();
+    if (d.status === 'ok') { loadAudit(); }
+  } catch(e) { alert('Verify failed: '+e.message); }
+}
+
+async function discoverPattern(companyId) {
+  try {
+    const r = await fetch(API_BASE+'/company/'+companyId+'/discover-email-pattern', {method:'POST', headers:{'X-LF-Key':API_KEY}});
+    const d = await r.json();
+    if (d.status === 'ok' || d.pattern) { loadAudit(); }
+  } catch(e) { alert('Discover failed: '+e.message); }
+}
+
+// ── Bulk actions per bucket ──
+async function bulkVerifyTitles() {
+  const ids = Array.from(selections.notTitle);
+  if (!ids.length) return;
+  if (!confirm('AI-verify titles for '+ids.length+' contacts?')) return;
+  for (const id of ids) {
+    await fetch(API_BASE+'/contact/'+id+'/verify-title', {method:'POST', headers:{'X-LF-Key':API_KEY}}).catch(()=>{});
+  }
+  clearSelection('notTitle');
+  loadAudit();
+}
+
+async function bulkVerifyLowConf() {
+  const ids = Array.from(selections.lowConf);
+  if (!ids.length) return;
+  if (!confirm('AI-verify titles for '+ids.length+' contacts?')) return;
+  for (const id of ids) {
+    await fetch(API_BASE+'/contact/'+id+'/verify-title', {method:'POST', headers:{'X-LF-Key':API_KEY}}).catch(()=>{});
+  }
+  clearSelection('lowConf');
+  loadAudit();
+}
+
+async function bulkDeleteNotTitle() {
+  const ids = Array.from(selections.notTitle);
+  if (!ids.length) return;
+  if (!confirm('Delete '+ids.length+' contacts?')) return;
+  await fetch(API_BASE+'/contacts/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids})}).catch(()=>{});
+  clearSelection('notTitle');
+  loadAudit();
+}
+
+async function bulkDeleteLowConf() {
+  const ids = Array.from(selections.lowConf);
+  if (!ids.length) return;
+  if (!confirm('Delete '+ids.length+' contacts?')) return;
+  await fetch(API_BASE+'/contacts/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids})}).catch(()=>{});
+  clearSelection('lowConf');
+  loadAudit();
+}
+
+async function bulkDiscoverPatterns() {
+  const ids = Array.from(selections.noPat);
+  if (!ids.length) return;
+  if (!confirm('Discover email patterns for '+ids.length+' companies?')) return;
+  await fetch(API_BASE+'/companies/bulk-discover', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids, session_key:''})}).catch(()=>{});
+  clearSelection('noPat');
+  loadAudit();
+}
+
+async function bulkDeleteNoPat() {
+  const ids = Array.from(selections.noPat);
+  if (!ids.length) return;
+  if (!confirm('Delete '+ids.length+' companies?')) return;
+  await fetch(API_BASE+'/companies/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids})}).catch(()=>{});
+  clearSelection('noPat');
+  loadAudit();
+}
+
+async function bulkDeleteWebQ() {
+  const ids = Array.from(selections.webq);
+  if (!ids.length) return;
+  if (!confirm('Delete '+ids.length+' companies?')) return;
+  await fetch(API_BASE+'/companies/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids})}).catch(()=>{});
+  clearSelection('webq');
+  loadAudit();
+}
+
+// ── Load & render ──
 async function loadAudit() {
   try {
     const [companies, contacts] = await Promise.all([
-      fetch(API_BASE + '/companies?limit=500', {headers: {'X-LF-Key': API_KEY}}).then(r => r.ok ? r.json() : {companies: []}),
-      fetch(API_BASE + '/contacts?limit=500', {headers: {'X-LF-Key': API_KEY}}).then(r => r.ok ? r.json() : {contacts: []}),
+      fetch(API_BASE+'/companies?limit=500', {headers:{'X-LF-Key':API_KEY}}).then(r=>r.ok?r.json():{companies:[]}),
+      fetch(API_BASE+'/contacts?limit=500', {headers:{'X-LF-Key':API_KEY}}).then(r=>r.ok?r.json():{contacts:[]}),
     ]);
 
     const comps = companies.companies || [];
     const cts = contacts.contacts || [];
 
-    // Metrics
     const noTitle = cts.filter(c => !c.title);
-    const lowConf = cts.filter(c => (c.confidence_score || 0) < 0.6);
+    const lowConf = cts.filter(c => (c.confidence_score||0) < 0.6);
     const noPattern = comps.filter(c => !c.email_pattern);
     const manuallyEdited = cts.filter(c => c.is_manually_edited);
     const withEmail = cts.filter(c => c.email);
 
-    const stats = document.getElementById('auditStats');
-    stats.innerHTML =
-      '<div class="stat-card error"><div class="stat-value">' + noTitle.length + '</div><div class="stat-label">No Title</div></div>' +
-      '<div class="stat-card warning"><div class="stat-value">' + lowConf.length + '</div><div class="stat-label">Low Confidence</div></div>' +
-      '<div class="stat-card warning"><div class="stat-value">' + noPattern.length + '</div><div class="stat-label">No Email Pattern</div></div>' +
-      '<div class="stat-card success"><div class="stat-value">' + withEmail.length + '</div><div class="stat-label">With Emails</div></div>' +
-      '<div class="stat-card"><div class="stat-value">' + manuallyEdited.length + '</div><div class="stat-label">Manually Edited</div></div>';
+    allData.notTitle = noTitle;
+    allData.lowConf = lowConf;
+    allData.noPat = noPattern;
 
-    // No titles
-    const noTitleTbody = document.getElementById('noTitleTable');
-    if (noTitle.length === 0) {
-      emptyRow(noTitleTbody, 6, 'No contacts without titles. Nice work.');
-    } else {
-      noTitleTbody.innerHTML = noTitle.slice(0, 50).map(c =>
-        '<tr>' +
-          '<td>' + escapeHtml(c.full_name) + '</td>' +
-          '<td>' + escapeHtml(c.company_name || '') + '</td>' +
-          '<td>' + escapeHtml(c.company_city || '') + '</td>' +
-          '<td><span class="badge badge-yellow">' + (c.confidence_score || 0).toFixed(1) + '</span></td>' +
-          '<td>' + contactActions(c) + '</td>' +
-        '</tr>'
-      ).join('');
+    // Stats
+    document.getElementById('auditStats').innerHTML =
+      '<div class="stat-card error"><div class="stat-value">'+noTitle.length+'</div><div class="stat-label">No Title</div></div>'+
+      '<div class="stat-card warning"><div class="stat-value">'+lowConf.length+'</div><div class="stat-label">Low Confidence</div></div>'+
+      '<div class="stat-card warning"><div class="stat-value">'+noPattern.length+'</div><div class="stat-label">No Email Pattern</div></div>'+
+      '<div class="stat-card success"><div class="stat-value">'+withEmail.length+'</div><div class="stat-label">With Emails</div></div>'+
+      '<div class="stat-card"><div class="stat-value">'+manuallyEdited.length+'</div><div class="stat-label">Manually Edited</div></div>';
+
+    // ── No Titles ──
+    const tbody1 = document.getElementById('noTitleTable');
+    if (!noTitle.length) { tbody1.innerHTML = '<tr><td colspan="7" class="empty-msg">No contacts without titles. Nice work.</td></tr>'; }
+    else {
+      tbody1.innerHTML = noTitle.slice(0,50).map(c => {
+        const cb = selections.notTitle.has(c.id) ? ' checked' : '';
+        const li = c.linkedin_url ? '<a href="'+escapeHtml(c.linkedin_url)+'" target="_blank" style="color:#38bdf8;text-decoration:none;" title="'+escapeHtml(c.linkedin_url)+'">&#128279;</a>' : '<span style="color:#64748b;">—</span>';
+        return '<tr><td><input type="checkbox" class="notTitle-cb" data-id="'+c.id+'"'+cb+'/></td>'+
+          '<td style="font-weight:600;" title="'+escapeHtml(c.full_name)+'">'+escapeHtml(c.full_name)+'</td>'+
+          '<td title="'+escapeHtml(c.company_name||'')+'">'+escapeHtml(c.company_name||'')+'</td>'+
+          '<td title="'+escapeHtml(c.company_city||'')+'">'+escapeHtml(c.company_city||'')+'</td>'+
+          '<td><span class="badge badge-yellow">'+(c.confidence_score||0).toFixed(1)+'</span></td>'+
+          '<td>'+li+'</td>'+
+          '<td style="overflow:visible;">'+contactActions(c,'notTitle')+'</td></tr>';
+      }).join('');
     }
 
-    // Low confidence
-    const lowConfTbody = document.getElementById('lowConfTable');
-    if (lowConf.length === 0) {
-      emptyRow(lowConfTbody, 6, 'No low-confidence contacts. All clear.');
-    } else {
-      lowConfTbody.innerHTML = lowConf.slice(0, 50).map(c =>
-        '<tr>' +
-          '<td>' + escapeHtml(c.full_name) + '</td>' +
-          '<td>' + escapeHtml(c.title || '-') + '</td>' +
-          '<td>' + escapeHtml(c.company_name || '') + '</td>' +
-          '<td><span class="badge badge-red">' + (c.confidence_score || 0).toFixed(1) + '</span></td>' +
-          '<td>' + contactActions(c) + '</td>' +
-        '</tr>'
-      ).join('');
+    // ── Low Confidence ──
+    const tbody2 = document.getElementById('lowConfTable');
+    if (!lowConf.length) { tbody2.innerHTML = '<tr><td colspan="7" class="empty-msg">No low-confidence contacts. All clear.</td></tr>'; }
+    else {
+      tbody2.innerHTML = lowConf.slice(0,50).map(c => {
+        const cb = selections.lowConf.has(c.id) ? ' checked' : '';
+        const li = c.linkedin_url ? '<a href="'+escapeHtml(c.linkedin_url)+'" target="_blank" style="color:#38bdf8;text-decoration:none;" title="'+escapeHtml(c.linkedin_url)+'">&#128279;</a>' : '<span style="color:#64748b;">—</span>';
+        return '<tr><td><input type="checkbox" class="lowConf-cb" data-id="'+c.id+'"'+cb+'/></td>'+
+          '<td style="font-weight:600;" title="'+escapeHtml(c.full_name)+'">'+escapeHtml(c.full_name)+'</td>'+
+          '<td title="'+escapeHtml(c.title||'')+'">'+escapeHtml(c.title||'-')+'</td>'+
+          '<td title="'+escapeHtml(c.company_name||'')+'">'+escapeHtml(c.company_name||'')+'</td>'+
+          '<td><span class="badge badge-red">'+(c.confidence_score||0).toFixed(1)+'</span></td>'+
+          '<td>'+li+'</td>'+
+          '<td style="overflow:visible;">'+contactActions(c,'lowConf')+'</td></tr>';
+      }).join('');
     }
 
-    // No email pattern
-    const noPatternTbody = document.getElementById('noPatternTable');
-    if (noPattern.length === 0) {
-      emptyRow(noPatternTbody, 6, 'All companies have email patterns.');
-    } else {
-      noPatternTbody.innerHTML = noPattern.slice(0, 50).map(c =>
-        '<tr>' +
-          '<td>' + escapeHtml(c.name) + '</td>' +
-          '<td>' + escapeHtml(c.city || '') + '</td>' +
-          '<td>' + (c.contact_count || 0) + '</td>' +
-          '<td>' + (c.website ? '<a href="' + escapeHtml(c.website) + '" target="_blank" style="color:#38bdf8;">' + escapeHtml(c.website) + '</a>' : '<span style="color:#ef4444;">missing</span>') + '</td>' +
-          '<td>' + (c.website ? '<span style="color:#94a3b8;font-family:monospace;font-size:0.8rem;">' + extractDomain(c.website) + '</span>' : '—') + '</td>' +
-          '<td>' + companyActions(c) + '</td>' +
-        '</tr>'
-      ).join('');
+    // ── No Email Pattern ──
+    const tbody3 = document.getElementById('noPatternTable');
+    if (!noPattern.length) { tbody3.innerHTML = '<tr><td colspan="7" class="empty-msg">All companies have email patterns.</td></tr>'; }
+    else {
+      tbody3.innerHTML = noPattern.slice(0,50).map(c => {
+        const cb = selections.noPat.has(c.id) ? ' checked' : '';
+        const web = c.website ? '<a href="'+escapeHtml(c.website)+'" target="_blank" style="color:#38bdf8;font-size:0.75rem;" title="'+escapeHtml(c.website)+'">'+escapeHtml(c.website.replace(/^https?:\/\/(www\.)?/,'').substring(0,30))+'</a>' : '<span style="color:#ef4444;">missing</span>';
+        const dom = c.website ? '<span style="color:#94a3b8;font-family:monospace;font-size:0.75rem;" title="'+escapeHtml(extractDomain(c.website))+'">'+escapeHtml(extractDomain(c.website).substring(0,25))+'</span>' : '—';
+        return '<tr><td><input type="checkbox" class="noPat-cb" data-id="'+c.id+'"'+cb+'/></td>'+
+          '<td style="font-weight:600;" title="'+escapeHtml(c.name)+'">'+escapeHtml(c.name)+'</td>'+
+          '<td title="'+escapeHtml(c.city||'')+'">'+escapeHtml(c.city||'')+'</td>'+
+          '<td>'+(c.contact_count||0)+'</td>'+
+          '<td>'+web+'</td>'+
+          '<td>'+dom+'</td>'+
+          '<td style="overflow:visible;">'+companyActions(c,'noPat')+'</td></tr>';
+      }).join('');
     }
 
-    // Website & domain quality
-    const websiteQualityTbody = document.getElementById('websiteQualityTable');
-    if (comps.length === 0) {
-      emptyRow(websiteQualityTbody, 6, 'No companies to audit.');
-    } else {
-      const aggregatorDomains = ['yelp.com', 'facebook.com', 'linkedin.com', 'google.com', 'mapquest.com', 'yellowpages.com', 'bbb.org'];
-      const suspicious = comps.filter(c => {
-        if (!c.website) return true;
-        const d = extractDomain(c.website).toLowerCase();
-        return aggregatorDomains.some(agg => d.includes(agg));
+    // ── Website Quality ──
+    const tbody4 = document.getElementById('websiteQualityTable');
+    const aggregatorDomains = ['yelp.com','facebook.com','linkedin.com','google.com','mapquest.com','yellowpages.com','bbb.org'];
+    const suspicious = comps.filter(c => {
+      if (!c.website) return true;
+      const d = extractDomain(c.website).toLowerCase();
+      return aggregatorDomains.some(agg => d.includes(agg));
+    });
+    allData.webq = suspicious;
+
+    if (!suspicious.length) { tbody4.innerHTML = '<tr><td colspan="7" class="empty-msg">All websites look clean.</td></tr>'; }
+    else {
+      tbody4.innerHTML = suspicious.slice(0,50).map(c => {
+        const cb = selections.webq.has(c.id) ? ' checked' : '';
+        let status = '';
+        if (!c.website) { status = '<span class="badge badge-red">no website</span>'; }
+        else { const d = extractDomain(c.website).toLowerCase(); const isAgg = aggregatorDomains.some(agg => d.includes(agg)); status = isAgg ? '<span class="badge badge-yellow">aggregator</span>' : '<span class="badge badge-green">ok</span>'; }
+        const web = c.website ? '<a href="'+escapeHtml(c.website)+'" target="_blank" style="color:#38bdf8;font-size:0.75rem;" title="'+escapeHtml(c.website)+'">'+escapeHtml(c.website.replace(/^https?:\/\/(www\.)?/,'').substring(0,30))+'</a>' : '<span style="color:#ef4444;">missing</span>';
+        const dom = c.website ? '<span style="color:#94a3b8;font-family:monospace;font-size:0.75rem;" title="'+escapeHtml(extractDomain(c.website))+'">'+escapeHtml(extractDomain(c.website).substring(0,25))+'</span>' : '—';
+        return '<tr><td><input type="checkbox" class="webq-cb" data-id="'+c.id+'"'+cb+'/></td>'+
+          '<td style="font-weight:600;" title="'+escapeHtml(c.name)+'">'+escapeHtml(c.name)+'</td>'+
+          '<td title="'+escapeHtml(c.city||'')+'">'+escapeHtml(c.city||'')+'</td>'+
+          '<td>'+web+'</td>'+
+          '<td>'+dom+'</td>'+
+          '<td>'+status+'</td>'+
+          '<td style="overflow:visible;">'+companyActions(c,'webq')+'</td></tr>';
+      }).join('');
+    }
+
+    // Wire checkboxes
+    document.querySelectorAll('[class$="-cb"]').forEach(cb => {
+      cb.addEventListener('change', function() {
+        const bucket = this.className.replace('-cb','');
+        const id = parseInt(this.dataset.id);
+        toggleItem(bucket, id, this.checked);
       });
-      if (suspicious.length === 0) {
-        emptyRow(websiteQualityTbody, 6, 'All websites look clean.');
-      } else {
-        websiteQualityTbody.innerHTML = suspicious.slice(0, 50).map(c => {
-          let status = '';
-          let statusClass = '';
-          if (!c.website) {
-            status = '<span class="badge badge-red">no website</span>';
-          } else {
-            const d = extractDomain(c.website).toLowerCase();
-            const isAgg = aggregatorDomains.some(agg => d.includes(agg));
-            if (isAgg) {
-              status = '<span class="badge badge-yellow">aggregator</span>';
-            } else {
-              status = '<span class="badge badge-green">ok</span>';
-            }
-          }
-          return '<tr>' +
-            '<td>' + escapeHtml(c.name) + '</td>' +
-            '<td>' + escapeHtml(c.city || '') + '</td>' +
-            '<td>' + (c.website ? '<a href="' + escapeHtml(c.website) + '" target="_blank" style="color:#38bdf8;">' + escapeHtml(c.website) + '</a>' : '<span style="color:#ef4444;">missing</span>') + '</td>' +
-            '<td>' + (c.website ? '<span style="color:#94a3b8;font-family:monospace;font-size:0.8rem;">' + extractDomain(c.website) + '</span>' : '—') + '</td>' +
-            '<td>' + status + '</td>' +
-            '<td>' + companyActions(c) + '</td>' +
-          '</tr>';
-        }).join('');
-      }
-    }
+    });
+
   } catch(e) {
     console.error('loadAudit error:', e);
-    document.getElementById('auditStats').innerHTML = '<div class="stat-card error"><div class="stat-value">ERROR</div><div class="stat-label">' + escapeHtml(e.message) + '</div></div>';
+    document.getElementById('auditStats').innerHTML = '<div class="stat-card error"><div class="stat-value">ERROR</div><div class="stat-label">'+escapeHtml(e.message)+'</div></div>';
   }
 }
 
 async function backfillWebsites() {
-  if (!confirm('Backfill missing websites by calling Google Places Details API for each company?\n\nThis may take a while.')) return;
+  if (!confirm('Backfill missing websites via Google Places API?')) return;
   const info = document.getElementById('actionInfo');
   info.textContent = 'Processing...';
   try {
-    const r = await fetch(API_BASE+'/backfill-websites?limit=100', {method: 'POST', headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/backfill-websites?limit=100', {method:'POST', headers:{'X-LF-Key':API_KEY}});
     const d = await r.json();
-    info.textContent = `Done: ${d.enriched} enriched, ${d.failed} failed, ${d.processed} processed`;
+    info.textContent = 'Done: '+d.enriched+' enriched, '+d.failed+' failed, '+d.processed+' processed';
     loadAudit();
-  } catch(e) {
-    info.textContent = 'Error: ' + e.message;
-  }
+  } catch(e) { info.textContent = 'Error: '+e.message; }
 }
 
 loadAudit();
