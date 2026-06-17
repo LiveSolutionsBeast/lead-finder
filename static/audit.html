@@ -489,18 +489,19 @@ async function loadAudit() {
 }
 
 async function backfillWebsites() {
-  if (!confirm('Backfill missing websites via Google Places API?')) return;
+  if (!confirm('Backfill missing websites, patterns, and types for companies using AI?\n\nThis may take a while.')) return;
   const info = document.getElementById('actionInfo');
   info.textContent = 'Processing...';
   try {
-    const r = await fetch(API_BASE+'/backfill-websites?limit=100', {method:'POST', headers:{'X-LF-Key':API_KEY}});
+    const r = await fetch(API_BASE+'/ai/backfill', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({tasks:['website'],only_missing:true,limit:100})});
     if (!r.ok) {
       const d = await r.json().catch(()=>({}));
       info.textContent = 'Error: ' + (d.detail || r.statusText);
       return;
     }
     const d = await r.json();
-    info.textContent = 'Done: '+(d.enriched ?? '?')+' enriched, '+(d.failed ?? '?')+' failed, '+(d.processed ?? '?')+' processed';
+    const s = d.summary || {};
+    info.textContent = 'Done: '+(s.websites_updated ?? 0)+' websites updated, '+(s.processed ?? 0)+' processed, '+(s.errors ?? 0)+' errors';
     loadAudit();
   } catch(e) { info.textContent = 'Error: '+e.message; }
 }
