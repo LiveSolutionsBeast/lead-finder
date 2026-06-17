@@ -405,8 +405,10 @@ async def api_session_resume(
         "session": session,
         "companies": companies,
         "company_count": len(companies),
-        # Frontend navigates to this URL after resume to load the session
-        "redirect_url": f"/?session={session_key}",
+        # Frontend navigates to this URL after resume to load the session.
+        # Must use /finder/ path — the root / redirects to /finder/ which
+        # strips query parameters (fixes View/Resume buttons Issue #4).
+        "redirect_url": f"/finder/?session={session_key}",
     }
 
 

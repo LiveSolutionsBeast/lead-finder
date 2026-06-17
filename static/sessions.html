@@ -25,6 +25,8 @@ td{padding:0.75rem 1rem;border-bottom:1px solid #1e293b}
 tr:hover td{background:#1e293b}
 .btn{padding:0.6rem 1.4rem;background:#38bdf8;color:#0f172a;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer}
 .btn-sm{padding:0.4rem 0.8rem;font-size:0.8rem}
+.btn-orange{background:#f59e0b;color:#0f172a}
+.btn-green{background:#22c55e;color:#0f172a}
 .hidden{display:none}
 .badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600}
 .badge-local{background:#22c55e33;color:#22c55e}
@@ -151,32 +153,36 @@ async function loadStats() {
 let sessionsSort = { key: 'created_at', dir: 'desc' };
 
 async function loadSessions() {
-  const r = await fetch(API_BASE+'/sessions', {headers: {'X-LF-Key': API_KEY}});
-  let sessions = await r.json();
-  sessions = sortByKey(sessions, sessionsSort.key, sessionsSort.dir);
-  const perPage = parseInt(document.getElementById('perPage').value) || 20;
-  const tbody = document.getElementById('sessionsTable');
-  tbody.innerHTML = '';
-  document.getElementById('pageInfo').textContent = sessions.length + ' sessions' + (sessions.length > perPage ? ' (showing ' + perPage + ')' : '');
-  const maxShow = Math.min(perPage, sessions.length);
-  for (let i = 0; i < maxShow; i++) {
-    const s = sessions[i];
-    const created = s.created_at ? s.created_at.substring(0,16).replace('T',' ') : '';
-     tbody.innerHTML += '<tr><td style="font-family:monospace;color:#38bdf8;">'+s.session_key+'</td><td>'+s.industry+'</td><td>'+s.city+'</td><td>'+s.state+'</td><td>'+created+'</td><td><button class="btn btn-sm" onclick="loadSession(\''+s.session_key+'\')">View</button> <button class="btn btn-sm btn-orange" onclick="resumeSession(\''+s.session_key+'\')">Resume</button> <button class="btn btn-sm btn-green" onclick="exportSession(\''+s.session_key+'\')">Export</button></td></tr>';
-  }
-  // Wire up sortable headers on the main sessions table
-  const table = tbody.closest('table');
-  if (table) {
-    wireSortableHeaders(table, sessionsSort);
-    // Mark the current sort
-    table.querySelectorAll('th.sortable').forEach(t => {
-      t.classList.remove('sort-asc', 'sort-desc');
-      if (t.getAttribute('data-sort-key') === sessionsSort.key) {
-        t.classList.add(sessionsSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
-      }
-    });
-    table.addEventListener('sortchange', () => loadSessions());
-  }
+  try {
+    const r = await fetch(API_BASE+'/sessions', {headers: {'X-LF-Key': API_KEY}});
+    if (!r.ok) { console.error('loadSessions HTTP', r.status); return; }
+    let sessions = await r.json();
+    sessions = sortByKey(sessions, sessionsSort.key, sessionsSort.dir);
+    const perPage = parseInt(document.getElementById('perPage').value) || 20;
+    const tbody = document.getElementById('sessionsTable');
+    tbody.innerHTML = '';
+    document.getElementById('pageInfo').textContent = sessions.length + ' sessions' + (sessions.length > perPage ? ' (showing ' + perPage + ')' : '');
+    const maxShow = Math.min(perPage, sessions.length);
+    for (let i = 0; i < maxShow; i++) {
+      const s = sessions[i];
+      const created = s.created_at ? s.created_at.substring(0,16).replace('T',' ') : '';
+       tbody.innerHTML += '<tr><td style="font-family:monospace;color:#38bdf8;">'+s.session_key+'</td><td>'+s.industry+'</td><td>'+s.city+'</td><td>'+s.state+'</td><td>'+created+'</td><td><button class="btn btn-sm" onclick="loadSession(\''+s.session_key+'\')">View</button> <button class="btn btn-sm btn-orange" onclick="resumeSession(\''+s.session_key+'\')">Resume</button> <button class="btn btn-sm btn-green" onclick="exportSession(\''+s.session_key+'\')">Export</button></td></tr>';
+    }
+    // Wire up sortable headers on the main sessions table (only once)
+    const table = tbody.closest('table');
+    if (table && !table.__sortWired) {
+      table.__sortWired = true;
+      wireSortableHeaders(table, sessionsSort);
+      // Mark the current sort
+      table.querySelectorAll('th.sortable').forEach(t => {
+        t.classList.remove('sort-asc', 'sort-desc');
+        if (t.getAttribute('data-sort-key') === sessionsSort.key) {
+          t.classList.add(sessionsSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+      });
+      table.addEventListener('sortchange', () => loadSessions());
+    }
+  } catch(e) { console.error('loadSessions error:', e); }
 }
 
 // Session-detail sub-table sort state (added 2026-06-16)
@@ -295,6 +301,7 @@ function wireSubTableSort() {
 async function loadSession(sk) {
   try {
     const r = await fetch(API_BASE+'/session/'+sk+'/results', {headers: {'X-LF-Key': API_KEY}});
+    if (!r.ok) { alert('Failed to load session '+sk+' (HTTP '+r.status+')'); return; }
     const data = await r.json();
     window.currentSessionKey = sk;  // Store for re-enrich
     const detail = document.getElementById('sessionDetail');
@@ -304,13 +311,13 @@ async function loadSession(sk) {
     sessionDetailData = data;
     let html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem;"><div class="stat-card"><div class="stat-value">'+(data.companies.length||0)+'</div><div class="stat-label">Companies</div></div><div class="stat-card"><div class="stat-value">'+(data.contacts.length||0)+'</div><div class="stat-label">Contacts</div></div></div>';
     // Add Re-Enrich All button
-    html += '<div style="margin-bottom:1rem;"><button class="btn btn-orange" onclick="reEnrichAll()">Refresh Contacts</button> <span style="color:#64748b;font-size:0.8rem;">Re-runs executive discovery for all companies</span></div>';
+    html += '<div style="margin-bottom:1rem;"><button class="btn btn-orange btn-sm" onclick="reEnrichAll()">Refresh Contacts</button> <span style="color:#64748b;font-size:0.8rem;">Re-runs executive discovery for all companies</span></div>';
     html += renderCompaniesSubTable(data.companies, data.contacts);
     html += renderContactsSubTable(data.contacts);
     document.getElementById('detailContent').innerHTML = html;
     // Wire up sorting for the newly-rendered sub-tables
     wireSubTableSort();
-  } catch(e) { console.error(e); }
+  } catch(e) { console.error('loadSession error:', e); alert('Error loading session: '+e.message); }
 }
 
 function exportSession(sk) {
@@ -318,19 +325,22 @@ function exportSession(sk) {
 }
 
 async function resumeSession(sk) {
-  const r = await fetch(API_BASE+'/session/'+sk+'/resume', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json','X-LF-Key':API_KEY}
-  });
-  if (r.ok) {
-    const d = await r.json();
-    // Navigate to the search page with the session loaded (fixes Issue #4)
-    // The search page reads ?session=KEY and auto-loads the results.
-    const target = d.redirect_url || ('/?session='+sk);
-    window.location.href = target;
-  } else {
-    alert('Failed to resume session');
-  }
+  try {
+    const r = await fetch(API_BASE+'/session/'+sk+'/resume', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-LF-Key':API_KEY}
+    });
+    if (r.ok) {
+      const d = await r.json();
+      // Navigate to the search page with the session loaded (fixes Issue #4)
+      // The search page reads ?session=KEY and auto-loads the results.
+      // Must use /finder/ path — root / redirects there, stripping query params.
+      const target = d.redirect_url || ('/finder/?session='+sk);
+      window.location.href = target;
+    } else {
+      alert('Failed to resume session (HTTP '+r.status+')');
+    }
+  } catch(e) { console.error('resumeSession error:', e); alert('Error resuming session: '+e.message); }
 }
 
 async function reEnrichCompany(placeId, companyName, existingCount) {
