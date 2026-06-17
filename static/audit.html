@@ -250,8 +250,11 @@ function companyActions(c, bucket) {
   let html = '<div class="action-group">';
   html += '<button class="btn-sm btn-green" title="Edit on Companies page" onclick="window.open(\'/finder/companies\',\'_blank\')">&#9998;</button>';
   html += '<button class="btn-sm btn-red" title="Soft-delete company" onclick="deleteCompanyFromAudit('+c.id+',\''+escapeHtml(c.name).replace(/'/g,"\\'")+'\')">&#10005;</button>';
-  if (!c.email_pattern) {
+  if (bucket === 'noPat' && !c.email_pattern) {
     html += '<button class="btn-sm btn-blue" title="Discover email pattern" onclick="discoverPattern('+c.id+')">&#9993;</button>';
+  }
+  if (bucket === 'webq' && c.website) {
+    html += '<button class="btn-sm btn-orange" title="Clear bad website" onclick="clearWebsite('+c.id+')">&#10006;</button>';
   }
   html += '</div>';
   return html;
@@ -284,6 +287,12 @@ async function discoverPattern(companyId) {
     const d = await r.json();
     if (d.status === 'ok' || d.pattern) { loadAudit(); }
   } catch(e) { alert('Discover failed: '+e.message); }
+}
+
+async function clearWebsite(companyId) {
+  if (!confirm('Clear this company\'s website? It will be blank.')) return;
+  const r = await fetch(API_BASE+'/company/'+companyId, {method:'PATCH', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({website:''})});
+  if (r.ok) { loadAudit(); } else { alert('Clear failed'); }
 }
 
 // ── Bulk actions per bucket ──
