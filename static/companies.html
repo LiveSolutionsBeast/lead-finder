@@ -29,15 +29,25 @@ input:focus,select:focus{outline:none;border-color:#38bdf8}
 .btn-amber{background:#f59e0b;color:#0f172a}
 .btn-slate{background:#334155;color:#94a3b8}
 .table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:auto}
-th{text-align:left;padding:0.5rem 0.6rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.7rem;text-transform:uppercase;white-space:nowrap}
-td{padding:0.5rem 0.6rem;border-bottom:1px solid #1e293b;vertical-align:middle}
+table{width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed}
+th{text-align:left;padding:0.5rem 0.6rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.7rem;text-transform:uppercase;white-space:nowrap;overflow:hidden}
+td{padding:0.5rem 0.6rem;border-bottom:1px solid #1e293b;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}
 tr:hover td{background:#1e293b}
+th:nth-child(1),td:nth-child(1){width:30px}
+th:nth-child(2),td:nth-child(2){width:18%}
+th:nth-child(3),td:nth-child(3){width:10%}
+th:nth-child(4),td:nth-child(4){width:5%}
+th:nth-child(5),td:nth-child(5){width:12%}
+th:nth-child(6),td:nth-child(6){width:12%}
+th:nth-child(7),td:nth-child(7){width:15%}
+th:nth-child(8),td:nth-child(8){width:5%}
+th:nth-child(9),td:nth-child(9){width:15%;overflow:visible}
 .pattern-badge{display:inline-block;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pattern-badge-yes{background:#22c55e33;color:#22c55e}
 .pattern-badge-no{background:#334155;color:#94a3b8}
-.action-group{display:flex;gap:0.2rem;flex-wrap:wrap;align-items:center}
-.action-group .btn-sm{padding:0.2rem 0.4rem;font-size:0.65rem;white-space:nowrap}
+.action-group{display:inline-flex;gap:2px;flex-wrap:nowrap;align-items:center}
+.action-group .btn-sm{padding:2px 4px;font-size:0.7rem;min-width:20px;min-height:20px;text-align:center;line-height:1;white-space:nowrap}
+.btn-blue{background:#38bdf8;color:#0f172a}
 .toggle-label{display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;color:#94a3b8;cursor:pointer;user-select:none}
 .toggle-label input{accent-color:#38bdf8}
 tr.deleted-row{opacity:0.5}
@@ -353,118 +363,62 @@ function renderRow(c) {
   tr.dataset.companyJson = JSON.stringify(c);
   if (c.is_deleted) tr.classList.add('deleted-row');
 
-  // Checkbox cell
-  const checkTd = document.createElement('td');
-  checkTd.style.width = '30px';
-  checkTd.style.textAlign = 'center';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.className = 'company-cb';
-  cb.dataset.companyId = c.id;
-  cb.checked = selectedCompanyIds.has(c.id);
-  cb.addEventListener('change', () => toggleCompanySelection(c.id, cb.checked));
-  checkTd.appendChild(cb);
-  tr.appendChild(checkTd);
+  // Checkbox
+  const cbChecked = selectedCompanyIds.has(c.id) ? ' checked' : '';
 
-  // Pattern cell
-  const patternCell = document.createElement('td');
+  // Pattern cell content
+  let patternHtml;
   if (c.email_pattern) {
-    const badge = document.createElement('span');
-    badge.className = 'pattern-badge pattern-badge-yes';
-    badge.textContent = '✓ ' + c.email_pattern;
-    badge.title = c.email_pattern_source || 'discovered';
-    patternCell.appendChild(badge);
+    patternHtml = '<span class="pattern-badge pattern-badge-yes" title="' + escapeHtml(c.email_pattern_source || 'discovered') + '">' + escapeHtml(c.email_pattern) + '</span>';
   } else {
-    const badge = document.createElement('span');
-    badge.className = 'pattern-badge pattern-badge-no';
-    badge.textContent = '— none —';
-    patternCell.appendChild(badge);
+    patternHtml = '<span class="pattern-badge pattern-badge-no">— none —</span>';
   }
 
-  // Action cell
-  const actionCell = document.createElement('td');
-  const ag = document.createElement('div');
-  ag.className = 'action-group';
+  // Website cell
+  const websiteHtml = c.website
+    ? '<a href="' + escapeHtml(c.website) + '" target="_blank" title="' + escapeHtml(c.website) + '" style="color:#38bdf8;">' + escapeHtml(extractDomain(c.website)) + '</a>'
+    : '<span style="color:#ef4444;font-size:0.7rem;">missing</span>';
 
-  // Pattern buttons
+  // Type display
+  const typeDisplay = escapeHtml(formatBusinessType(c));
+
+  // Build action buttons as compact icon-only with title for hover
+  let actionsHtml;
   if (c.email_pattern) {
-    const editBtn = document.createElement('button');
-    editBtn.className = 'btn btn-sm btn-orange';
-    editBtn.textContent = '✏️';
-    editBtn.title = 'Edit/validate pattern';
-    editBtn.dataset.action = 'edit-pattern';
-    ag.appendChild(editBtn);
-
-    const clearBtn = document.createElement('button');
-    clearBtn.className = 'btn btn-sm btn-red';
-    clearBtn.textContent = '🗑️';
-    clearBtn.title = 'Clear pattern';
-    clearBtn.dataset.action = 'clear-pattern';
-    ag.appendChild(clearBtn);
+    actionsHtml =
+      '<button class="btn btn-sm btn-orange" data-action="edit-pattern" title="Edit/validate email pattern">&#9998;</button>'
+      + '<button class="btn btn-sm btn-red" data-action="clear-pattern" title="Clear email pattern">&#128465;</button>';
   } else {
-    const discoverBtn = document.createElement('button');
-    discoverBtn.className = 'btn btn-sm btn-slate';
-    discoverBtn.textContent = 'Discover';
-    discoverBtn.dataset.action = 'discover-pattern';
-    ag.appendChild(discoverBtn);
-
-    const editBtn = document.createElement('button');
-    editBtn.className = 'btn btn-sm btn-orange';
-    editBtn.textContent = '✏️';
-    editBtn.title = 'Enter pattern manually';
-    editBtn.dataset.action = 'edit-pattern';
-    ag.appendChild(editBtn);
+    actionsHtml =
+      '<button class="btn btn-sm btn-slate" data-action="discover-pattern" title="Discover email pattern via search">D</button>'
+      + '<button class="btn btn-sm btn-orange" data-action="edit-pattern" title="Enter email pattern manually">&#9998;</button>';
   }
+  actionsHtml +=
+    '<button class="btn btn-sm btn-green" data-action="find-contacts" title="Find contacts for this company">&#128100;</button>'
+    + '<button class="btn btn-sm btn-blue" data-action="get-emails" title="Derive emails from pattern">&#9993;</button>'
+    + '<button class="btn btn-sm btn-amber" data-action="export-patterns" title="Export email patterns">&#8681;</button>';
 
-  // Contact actions
-  const findBtn = document.createElement('button');
-  findBtn.className = 'btn btn-sm btn-green';
-  findBtn.textContent = 'Find Contacts';
-  findBtn.dataset.action = 'find-contacts';
-  ag.appendChild(findBtn);
-
-  const getBtn = document.createElement('button');
-  getBtn.className = 'btn btn-sm';
-  getBtn.style.background = '#38bdf8';
-  getBtn.textContent = 'Get Emails';
-  getBtn.dataset.action = 'get-emails';
-  ag.appendChild(getBtn);
-
-  const exportBtn = document.createElement('button');
-  exportBtn.className = 'btn btn-sm btn-amber';
-  exportBtn.textContent = 'Export Patterns';
-  exportBtn.dataset.action = 'export-patterns';
-  ag.appendChild(exportBtn);
-
-  // Soft-delete / undelete button
   if (c.is_deleted) {
-    const restoreBtn = document.createElement('button');
-    restoreBtn.className = 'btn btn-sm btn-green';
-    restoreBtn.textContent = '♻️';
-    restoreBtn.title = 'Restore (undelete)';
-    restoreBtn.dataset.action = 'undelete-company';
-    ag.appendChild(restoreBtn);
+    actionsHtml += '<button class="btn btn-sm btn-green" data-action="undelete-company" title="Restore deleted company">&#9851;</button>';
   } else {
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn btn-sm btn-red';
-    deleteBtn.textContent = '🗑';
-    deleteBtn.title = 'Soft-delete company';
-    deleteBtn.dataset.action = 'delete-company';
-    ag.appendChild(deleteBtn);
+    actionsHtml += '<button class="btn btn-sm btn-red" data-action="delete-company" title="Soft-delete this company">&#10005;</button>';
   }
 
-  actionCell.appendChild(ag);
-
-  // Build row
+  // Build full row as a single innerHTML (avoids DOM/innerHTML mixing)
   tr.innerHTML =
-    '<td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(c.name) + '">' + escapeHtml(c.name) + '</td>' +
-    '<td style="white-space:nowrap;">' + escapeHtml(c.city || '') + '</td>' +
-    '<td style="white-space:nowrap;">' + escapeHtml(c.state || '') + '</td>' +
-    '<td style="white-space:nowrap;">' + escapeHtml(formatBusinessType(c)) + '</td>' +
-    '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.website ? '<a href="' + escapeHtml(c.website) + '" target="_blank" title="' + escapeHtml(c.website) + '" style="color:#38bdf8;">' + escapeHtml(extractDomain(c.website)) + '</a>' : '<span style="color:#ef4444;font-size:0.7rem;">missing</span>') + '</td>';
-  tr.appendChild(patternCell);
-  tr.innerHTML += '<td style="text-align:center;white-space:nowrap;">' + (c.contact_count || 0) + '</td>';
-  tr.appendChild(actionCell);
+    '<td style="text-align:center;"><input type="checkbox" class="company-cb" data-company-id="' + c.id + '"' + cbChecked + ' /></td>'
+    + '<td style="font-weight:600;" title="' + escapeHtml(c.name) + '">' + escapeHtml(c.name) + '</td>'
+    + '<td>' + escapeHtml(c.city || '') + '</td>'
+    + '<td>' + escapeHtml(c.state || '') + '</td>'
+    + '<td>' + typeDisplay + '</td>'
+    + '<td>' + websiteHtml + '</td>'
+    + '<td>' + patternHtml + '</td>'
+    + '<td style="text-align:center;">' + (c.contact_count || 0) + '</td>'
+    + '<td style="overflow:visible;"><div class="action-group">' + actionsHtml + '</div></td>';
+
+  // Wire checkbox change listener
+  const cb = tr.querySelector('.company-cb');
+  cb.addEventListener('change', () => toggleCompanySelection(c.id, cb.checked));
 
   return tr;
 }
