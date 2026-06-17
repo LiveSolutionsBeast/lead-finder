@@ -1533,12 +1533,22 @@ async def api_ai_backfill(
     conn = get_db()
     cur = conn.cursor()
     if only_missing:
-        cur.execute("""
+        # Build WHERE clause based on actual tasks — don't return companies
+        # that already have the data the tasks would produce
+        clauses = []
+        if "website" in tasks:
+            clauses.append("(website IS NULL OR website = '')")
+        if "pattern" in tasks:
+            clauses.append("(email_pattern IS NULL OR email_pattern = '')")
+        if "type" in tasks:
+            clauses.append("business_type IN ('point_of_interest', 'establishment', 'place_of_worship')")
+        if not clauses:
+            clauses.append("1=1")  # fallback: match everything
+        where = " OR ".join(clauses)
+        cur.execute(f"""
             SELECT id, name, website, business_type, city, state, email_pattern
             FROM companies
-            WHERE (email_pattern IS NULL OR email_pattern = ''
-                   OR website IS NULL OR website = ''
-                   OR business_type IN ('point_of_interest', 'establishment', 'place_of_worship'))
+            WHERE {where}
             LIMIT ?
         """, (limit,))
     else:
@@ -1556,27 +1566,64 @@ async def api_ai_backfill(
     async def _run_backfill():
         from lf_ai_enrich import ai_infer_email_pattern, ai_discover_company_website
         from lf_db import get_db as _get_db
+        logger.info(f"backfill {job_id}: STARTED with {len(companies)} companies, tasks={tasks}")
         try:
             update_validation_job(job_id, status="running",
                                   started_at=datetime.now(timezone.utc).isoformat())
-            summary = {"patterns_found": 0, "websites_updated": 0, "errors": 0}
+            summary = {"patterns_found": 0, "websites_updated": 0, "errors": 0, "searxng_finds": 0}
             for i, c in enumerate(companies):
                 try:
                     # Website discovery
                     if "website" in tasks:
+                        logger.info(f"backfill {job_id}: [{i+1}/{len(companies)}] {c['name']} (id={c['id']}) current_website={c.get('website')}")
                         ai_r = ai_discover_company_website(
                             company_name=c["name"],
                             city=c.get("city", ""), state=c.get("state", ""),
                             current_website=c.get("website", ""),
                         )
-                        if ai_r and ai_r.get("website") and ai_r.get("confidence", 0) > 0.7:
-                            if ai_r["website"] != c.get("website"):
-                                _conn = _get_db()
-                                _cur = _conn.cursor()
-                                _cur.execute("UPDATE companies SET website=? WHERE id=?", (ai_r["website"], c["id"]))
-                                _conn.commit()
-                                _conn.close()
-                                summary["websites_updated"] += 1
+                        website_found = None
+                        if ai_r and ai_r.get("website") and ai_r.get("confidence", 0) >= 0.5:
+                            website_found = ai_r["website"]
+
+                        # SearXNG fallback if AI found nothing
+                        if not website_found:
+                            try:
+                                from lf_search_providers import search as web_search
+                                query = f"{c['name']} {c.get('city','')} {c.get('state','')} official website"
+                                results, _ = web_search(query, timeout=15)
+                                skip_domains = [
+                                    'yelp.com','facebook.com','linkedin.com','google.com','mapquest.com',
+                                    'yellowpages.com','bbb.org','chamberofcommerce.com','manta.com',
+                                    'buzzfile.com','indeed.com','glassdoor.com','crunchbase.com',
+                                    'wesocal.com','usbusiness.com','dnb.com','trustpilot.com',
+                                    'en.wikipedia.org','reddit.com','twitter.com','instagram.com',
+                                ]
+                                for sr in results:
+                                    url = (sr.get("url","") or "")
+                                    url_lower = url.lower()
+                                    if not url.startswith('http'):
+                                        continue
+                                    if any(agg in url_lower for agg in skip_domains):
+                                        continue
+                                    if '/listing/' in url_lower or '/directory/' in url_lower:
+                                        continue
+                                    website_found = url
+                                    break
+                                if website_found:
+                                    summary["searxng_finds"] += 1
+                                    logger.info(f"backfill {job_id}: SearXNG found {website_found} for {c['name']}")
+                                else:
+                                    logger.info(f"backfill {job_id}: SearXNG no viable URL for {c['name']} ({len(results)} results checked)")
+                            except Exception as search_e:
+                                logger.warning(f"backfill {job_id}: SearXNG fallback failed for {c['name']}: {search_e}")
+
+                        if website_found and website_found != c.get("website"):
+                            _conn = _get_db()
+                            _cur = _conn.cursor()
+                            _cur.execute("UPDATE companies SET website=? WHERE id=?", (website_found, c["id"]))
+                            _conn.commit()
+                            _conn.close()
+                            summary["websites_updated"] += 1
 
                     # Pattern inference
                     if "pattern" in tasks and not c.get("email_pattern"):
