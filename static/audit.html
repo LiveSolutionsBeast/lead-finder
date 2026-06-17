@@ -488,10 +488,12 @@ async function loadAudit() {
   }
 }
 
+let backfillPollTimer = null;
+
 async function backfillWebsites() {
-  if (!confirm('Backfill missing websites, patterns, and types for companies using AI?\n\nThis may take a while.')) return;
+  if (!confirm('Backfill missing websites for companies using AI?\n\nRuns in background — you can continue using the app.')) return;
   const info = document.getElementById('actionInfo');
-  info.textContent = 'Processing...';
+  info.textContent = 'Starting backfill...';
   try {
     const r = await fetch(API_BASE+'/ai/backfill', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({tasks:['website'],only_missing:true,limit:100})});
     if (!r.ok) {
@@ -500,9 +502,31 @@ async function backfillWebsites() {
       return;
     }
     const d = await r.json();
-    const s = d.summary || {};
-    info.textContent = 'Done: '+(s.websites_updated ?? 0)+' websites updated, '+(s.processed ?? 0)+' processed, '+(s.errors ?? 0)+' errors';
-    loadAudit();
+    if (d.status === 'no_work') { info.textContent = 'No companies need backfill.'; return; }
+    const jobId = d.job_id;
+    info.textContent = 'Backfill running... (0/' + d.total + ')';
+    // Poll every 3 seconds
+    if (backfillPollTimer) clearInterval(backfillPollTimer);
+    backfillPollTimer = setInterval(async () => {
+      try {
+        const jr = await fetch(API_BASE+'/email/validate-job/'+jobId, {headers:{'X-LF-Key':API_KEY}});
+        if (!jr.ok) return;
+        const jd = await jr.json();
+        const job = jd.job || jd;
+        info.textContent = 'Backfill running... (' + (job.done||0) + '/' + (job.total||d.total) + ')';
+        if (job.status === 'completed' || job.status === 'failed') {
+          clearInterval(backfillPollTimer);
+          backfillPollTimer = null;
+          const summary = job.results ? JSON.parse(job.results) : {};
+          if (job.status === 'completed') {
+            info.textContent = 'Done: '+(summary.websites_updated||0)+' websites updated, '+(summary.patterns_found||0)+' patterns found, '+(summary.errors||0)+' errors';
+          } else {
+            info.textContent = 'Backfill failed after '+(job.done||0)+' companies';
+          }
+          loadAudit();
+        }
+      } catch(e) { /* ignore poll errors */ }
+    }, 3000);
   } catch(e) { info.textContent = 'Error: '+e.message; }
 }
 

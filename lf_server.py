@@ -6,7 +6,7 @@ Serves static HTML + REST API on port 8798.
 Static files live in ./static/ (no more f-string HTML corruption).
 """
 
-import os, sys, hmac, json, sqlite3, logging, traceback
+import os, sys, hmac, json, sqlite3, logging, traceback, asyncio
 from pathlib import Path
 from typing import Optional
 from functools import wraps
@@ -1510,38 +1510,29 @@ async def api_company_ai_discover(
 @app.post("/api/ai/backfill")
 async def api_ai_backfill(
     body: dict | None = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     _: str = Header(None, alias="X-LF-Key"),
 ):
     """
-    Backfill all companies with AI discovery. (added 2026-06-07, QC-13)
+    Backfill companies with AI discovery — runs as a background job.
 
-    Per user spec 2026-06-07: 'we will need to redo all the existing companies and contacts'.
+    Returns {job_id, total} immediately. Poll GET /api/ai/backfill-job/{job_id}.
 
     Args (body):
-      tasks: list of tasks to run (default: pattern, website, type, sanity)
+      tasks: list of tasks to run (default: ["website"])
       only_missing: if True, only run on companies missing data
-        - pattern: only no email_pattern
-        - website: only no website OR aggregator website
-        - type: only ambiguous business_type (point_of_interest, establishment, etc.)
-        - sanity: always run
-      limit: max companies to process (default: 200)
-      dry_run: if True, don't write to DB
+      limit: max companies to process (default: 100)
     """
     verify_key(_)
-    from lf_email_patterns import discover_and_store_pattern
 
     body = body or {}
-    tasks = body.get("tasks") or ["pattern", "website", "type", "sanity"]
+    tasks = body.get("tasks") or ["website"]
     only_missing = bool(body.get("only_missing", True))
-    limit = int(body.get("limit", 200))
-    dry_run = bool(body.get("dry_run", False))
+    limit = int(body.get("limit", 100))
 
     conn = get_db()
     cur = conn.cursor()
-
-    # Build query
     if only_missing:
-        # Companies with no email_pattern OR no website OR ambiguous type
         cur.execute("""
             SELECT id, name, website, business_type, city, state, email_pattern
             FROM companies
@@ -1552,91 +1543,84 @@ async def api_ai_backfill(
         """, (limit,))
     else:
         cur.execute("SELECT id, name, website, business_type, city, state, email_pattern FROM companies LIMIT ?", (limit,))
-
     companies = [dict(r) for r in cur.fetchall()]
     conn.close()
 
-    # Run AI tasks
-    import asyncio
-    from lf_ai_enrich import (
-        ai_infer_email_pattern, ai_discover_company_website,
-        ai_normalize_business_type, ai_sanity_check_company,
-    )
+    if not companies:
+        return {"status": "no_work", "message": "No companies need backfill"}
 
-    summary = {"processed": 0, "patterns_found": 0, "websites_updated": 0, "issues_flagged": 0, "errors": 0}
-    detailed = []
+    import uuid as _uuid
+    job_id = f"backfill_{_uuid.uuid4().hex[:12]}"
+    create_validation_job(job_id, total=len(companies))
 
-    for c in companies:
+    async def _run_backfill():
+        from lf_ai_enrich import ai_infer_email_pattern, ai_discover_company_website
+        from lf_db import get_db as _get_db
         try:
-            r = {"company_id": c["id"], "name": c["name"]}
-            # Pattern
-            if "pattern" in tasks and (not only_missing or not c.get("email_pattern")):
-                domain = ""
-                if c.get("website"):
-                    from lf_executives import extract_domain
-                    domain = extract_domain(c["website"]) or ""
-                if not domain:
-                    # Try to infer from name
-                    domain = c["name"].lower().replace(" ", "").replace(",", "").replace(".", "").replace("-", "") + ".com"
-                ai_r = ai_infer_email_pattern(
-                    domain=domain, company_name=c["name"],
-                    industry=c.get("business_type", ""),
-                )
-                r["pattern"] = ai_r
-                if ai_r and ai_r.get("pattern") and not dry_run and not c.get("email_pattern"):
-                    conn = get_db()
-                    cur = conn.cursor()
-                    cur.execute(
-                        "UPDATE companies SET email_pattern=?, email_pattern_confidence=?, email_pattern_source=? WHERE id=?",
-                        (ai_r["pattern"], ai_r.get("confidence", 0.0), "ai_backfill", c["id"]),
-                    )
-                    conn.commit()
-                    conn.close()
-                    summary["patterns_found"] += 1
+            update_validation_job(job_id, status="running",
+                                  started_at=datetime.now(timezone.utc).isoformat())
+            summary = {"patterns_found": 0, "websites_updated": 0, "errors": 0}
+            for i, c in enumerate(companies):
+                try:
+                    # Website discovery
+                    if "website" in tasks:
+                        ai_r = ai_discover_company_website(
+                            company_name=c["name"],
+                            city=c.get("city", ""), state=c.get("state", ""),
+                            current_website=c.get("website", ""),
+                        )
+                        if ai_r and ai_r.get("website") and ai_r.get("confidence", 0) > 0.7:
+                            if ai_r["website"] != c.get("website"):
+                                _conn = _get_db()
+                                _cur = _conn.cursor()
+                                _cur.execute("UPDATE companies SET website=? WHERE id=?", (ai_r["website"], c["id"]))
+                                _conn.commit()
+                                _conn.close()
+                                summary["websites_updated"] += 1
 
-            # Website
-            if "website" in tasks:
-                ai_r = ai_discover_company_website(
-                    company_name=c["name"],
-                    city=c.get("city", ""), state=c.get("state", ""),
-                    current_website=c.get("website", ""),
-                )
-                r["website"] = ai_r
-                if ai_r and ai_r.get("website") and ai_r.get("confidence", 0) > 0.7 and not dry_run:
-                    if ai_r["website"] != c.get("website"):
-                        conn = get_db()
-                        cur = conn.cursor()
-                        cur.execute("UPDATE companies SET website=? WHERE id=?", (ai_r["website"], c["id"]))
-                        conn.commit()
-                        conn.close()
-                        summary["websites_updated"] += 1
+                    # Pattern inference
+                    if "pattern" in tasks and not c.get("email_pattern"):
+                        domain = ""
+                        if c.get("website"):
+                            from lf_executives import extract_domain
+                            domain = extract_domain(c["website"]) or ""
+                        if not domain:
+                            domain = c["name"].lower().replace(" ", "").replace(",", "").replace(".", "").replace("-", "") + ".com"
+                        ai_r = ai_infer_email_pattern(
+                            domain=domain, company_name=c["name"],
+                            industry=c.get("business_type", ""),
+                        )
+                        if ai_r and ai_r.get("pattern"):
+                            _conn = _get_db()
+                            _cur = _conn.cursor()
+                            _cur.execute(
+                                "UPDATE companies SET email_pattern=?, email_pattern_confidence=?, email_pattern_source=? WHERE id=?",
+                                (ai_r["pattern"], ai_r.get("confidence", 0.0), "ai_backfill", c["id"]),
+                            )
+                            _conn.commit()
+                            _conn.close()
+                            summary["patterns_found"] += 1
 
-            # Type
-            if "type" in tasks and (not only_missing or c.get("business_type") in
-                                    ("point_of_interest", "establishment", "place_of_worship")):
-                ai_r = ai_normalize_business_type(
-                    raw_type=c.get("business_type", ""),
-                    company_name=c.get("name", ""),
-                )
-                r["type"] = ai_r
+                    # Small delay between companies to avoid rate limits
+                    await asyncio.sleep(1.5)
+                except Exception as e:
+                    summary["errors"] += 1
+                    logger.warning(f"backfill {job_id}: company {c['id']} ({c['name']}) error: {e}")
 
-            # Sanity
-            if "sanity" in tasks:
-                ai_r = ai_sanity_check_company(c)
-                r["sanity"] = ai_r
-                if ai_r and not ai_r.get("is_valid", True):
-                    summary["issues_flagged"] += 1
+                update_validation_job(job_id, done=i + 1)
 
-            summary["processed"] += 1
-            detailed.append(r)
+            update_validation_job(job_id, status="completed",
+                                  finished_at=datetime.now(timezone.utc).isoformat(),
+                                  results=json.dumps(summary))
         except Exception as e:
-            summary["errors"] += 1
-            detailed.append({"company_id": c["id"], "name": c["name"], "error": str(e)})
+            logger.error(f"backfill job {job_id} failed: {e}")
+            update_validation_job(job_id, status="failed")
 
+    background_tasks.add_task(_run_backfill)
     return {
-        "summary": summary,
-        "companies_processed": len(companies),
-        "results": detailed[:50],  # limit response size
+        "job_id": job_id,
+        "total": len(companies),
+        "message": f"Backfill started for {len(companies)} companies. Poll job endpoint for progress.",
     }
 
 
