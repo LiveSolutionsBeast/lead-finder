@@ -1031,12 +1031,18 @@ def ai_infer_email_pattern_v2(
         f' "pattern_index": <integer 1-10>}}\n\n'
         f'If no basis: {{"pattern": null, "confidence": 0.0, "reasoning": "<why>",\n'
         f' "pattern_index": null}}\n\n'
+        f"# APPLY RULE (for the caller)\n"
+        f"- If the company already has contacts/employees with verified derived emails,\n"
+        f"  the pattern you return should be consistent with those emails.\n"
+        f"- If the company has ZERO existing contacts/derived emails and your confidence\n"
+        f"  is high (>=0.85) with real evidence, return that pattern and the caller\n"
+        f"  will treat it as the best known answer.\n"
+        f"- If the search results provide no evidence for THIS company, return null.\n\n"
         f"# REMINDERS\n"
         f"- Pattern MUST end with @{domain}\n"
         f"- Use real placeholders ({{first}}, {{last}}, {{f}}, {{l}}, {{m}}, {{n}}) - not literal names\n"
         f"- Don't invent patterns not in the top 10\n"
-        f"- Do NOT default to #1 just because it is common. Only pick a pattern if you have evidence.\n"
-        f"- If the search results provide no evidence for THIS company, return null.\n\n"
+        f"- Do NOT default to #1 just because it is common. Only pick a pattern if you have evidence.\n\n"
         f"Example valid output: {{\"pattern\": \"{example_pattern}\",\n"
         f' \"confidence\": 0.85, \"reasoning\": \"...\", \"pattern_index\": 1}}'
     )
