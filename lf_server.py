@@ -1872,6 +1872,126 @@ async def api_discover_email_pattern(
     }
 
 
+@app.post("/api/companies/bulk-discover-patterns")
+async def api_bulk_discover_patterns(
+    body: dict,
+    _: str = Header(None, alias="X-LF-Key"),
+):
+    """Bulk discover email patterns for multiple companies as a background job.
+
+    Body: {"ids": [int, ...], "quick": true}
+
+    Uses ai_infer_email_pattern_v2 (quick mode skips SearXNG for speed).
+    Returns {job_id, total} immediately. Poll GET /api/email/validate-job/{job_id}.
+    """
+    verify_key(_)
+    ids = body.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=400, detail="No company IDs provided")
+    try:
+        int_ids = [int(i) for i in ids]
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid company ID format")
+    quick = bool(body.get("quick", True))
+
+    # Fetch all companies
+    conn = get_db()
+    cur = conn.cursor()
+    placeholders = ",".join("?" * len(int_ids))
+    rows = cur.execute(
+        f"SELECT id, name, website, business_type, city, state, email_pattern "
+        f"FROM companies WHERE id IN ({placeholders})", int_ids
+    ).fetchall()
+    conn.close()
+
+    # Filter to only companies actually missing patterns
+    need_pattern = [dict(r) for r in rows if not dict(r).get("email_pattern")]
+    if not need_pattern:
+        return {"status": "ok", "message": "All selected companies already have patterns", "total": 0}
+
+    import uuid as _uuid
+    job_id = f"patdisc_{_uuid.uuid4().hex[:12]}"
+    create_validation_job(job_id, total=len(need_pattern))
+
+    async def _run():
+        from lf_ai_enrich import ai_infer_email_pattern_v2
+        from lf_db import get_db as _get_db
+        logger.info(f"bulk-discover-patterns {job_id}: STARTED with {len(need_pattern)} companies, quick={quick}")
+        try:
+            update_validation_job(job_id, status="running",
+                                  started_at=datetime.now(timezone.utc).isoformat())
+            summary = {"patterns_found": 0, "no_website": 0, "not_found": 0, "errors": 0}
+            sem = asyncio.Semaphore(3)  # max 3 concurrent AI calls
+
+            async def _discover_one(c):
+                async with sem:
+                    website = (c.get("website") or "").strip()
+                    if not website:
+                        summary["no_website"] += 1
+                        logger.info(f"bulk-discover-patterns {job_id}: {c['name']} — no website, skipping")
+                        return
+                    domain = extract_domain_from_website(website)
+                    if not domain:
+                        summary["no_website"] += 1
+                        logger.info(f"bulk-discover-patterns {job_id}: {c['name']} — invalid website {website}, skipping")
+                        return
+                    try:
+                        result = ai_infer_email_pattern_v2(
+                            domain=domain,
+                            company_name=c.get("name", ""),
+                            industry=c.get("business_type", ""),
+                            city=c.get("city", ""),
+                            state=c.get("state", ""),
+                            quick=quick,
+                        )
+                        if result and result.get("pattern"):
+                            pattern = result["pattern"]
+                            confidence = result.get("confidence", 0.0)
+                            _conn = _get_db()
+                            _cur = _conn.cursor()
+                            _cur.execute(
+                                "UPDATE companies SET email_pattern=?, email_pattern_confidence=?, email_pattern_source=? WHERE id=?",
+                                (pattern, confidence, "ai_v2_bulk", c["id"]),
+                            )
+                            _conn.commit()
+                            _conn.close()
+                            summary["patterns_found"] += 1
+                            logger.info(f"bulk-discover-patterns {job_id}: {c['name']} → {pattern} (conf={confidence:.2f})")
+                            # Auto-derive emails if confidence >= 0.35
+                            if confidence >= 0.35:
+                                try:
+                                    derive_emails_for_company(c["id"])
+                                except Exception:
+                                    pass
+                        else:
+                            summary["not_found"] += 1
+                            logger.info(f"bulk-discover-patterns {job_id}: {c['name']} — AI returned no pattern")
+                    except Exception as e:
+                        summary["errors"] += 1
+                        logger.warning(f"bulk-discover-patterns {job_id}: {c['name']} — error: {e}")
+
+            # Run companies sequentially with small delay to respect AI rate limits
+            for i, c in enumerate(need_pattern):
+                await _discover_one(c)
+                update_validation_job(job_id, done=i + 1)
+                # Small delay between AI calls to avoid rate limits
+                if i < len(need_pattern) - 1:
+                    await asyncio.sleep(1.5)
+
+            logger.info(f"bulk-discover-patterns {job_id}: DONE — {summary}")
+            update_validation_job(job_id, status="completed",
+                                  finished_at=datetime.now(timezone.utc).isoformat(),
+                                  results=json.dumps(summary))
+        except Exception as e:
+            logger.error(f"bulk-discover-patterns {job_id}: FAILED — {e}")
+            update_validation_job(job_id, status="failed",
+                                  finished_at=datetime.now(timezone.utc).isoformat(),
+                                  results=json.dumps({"error": str(e)}))
+
+    asyncio.create_task(_run())
+    return {"job_id": job_id, "total": len(need_pattern), "message": f"Discovering patterns for {len(need_pattern)} companies. Poll job endpoint for progress."}
+
+
 @app.post("/api/email/discover-pattern")
 async def api_email_discover_pattern(
     body: dict,

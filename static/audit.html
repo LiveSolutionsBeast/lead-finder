@@ -340,7 +340,30 @@ async function bulkDiscoverPatterns() {
   const ids = Array.from(selections.noPat);
   if (!ids.length) return;
   if (!confirm('Discover email patterns for '+ids.length+' companies?')) return;
-  await fetch(API_BASE+'/companies/bulk-discover', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids, session_key:''})}).catch(()=>{});
+  try {
+    const r = await fetch(API_BASE+'/companies/bulk-discover-patterns', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids, quick:true})});
+    const d = await r.json();
+    if (d.job_id) {
+      // Poll for completion
+      const jobId = d.job_id;
+      const total = d.total;
+      let done = 0;
+      while (done < total) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        try {
+          const jr = await fetch(API_BASE+'/email/validate-job/'+jobId, {headers:{'X-LF-Key':API_KEY}});
+          const jd = await jr.json();
+          done = jd.done || 0;
+          const status = jd.status || 'running';
+          if (status === 'completed' || status === 'failed') {
+            const results = jd.results || {};
+            alert('Pattern discovery complete!\nPatterns found: '+results.patterns_found+'\nNo website: '+results.no_website+'\nNot found: '+results.not_found+'\nErrors: '+results.errors);
+            break;
+          }
+        } catch(e) { /* keep polling */ }
+      }
+    }
+  } catch(e) { alert('Discover failed: '+e.message); }
   clearSelection('noPat');
   loadAudit();
 }
@@ -519,7 +542,7 @@ async function backfillWebsites() {
           backfillPollTimer = null;
           const summary = job.results ? JSON.parse(job.results) : {};
           if (job.status === 'completed') {
-            info.textContent = 'Done: '+(summary.websites_updated||0)+' websites updated, '+(summary.patterns_found||0)+' patterns found, '+(summary.errors||0)+' errors';
+            info.textContent = 'Done: '+(summary.websites_updated||0)+' websites updated ('+(summary.searxng_finds||0)+' via web search), '+(summary.patterns_found||0)+' patterns found, '+(summary.errors||0)+' errors';
           } else {
             info.textContent = 'Backfill failed after '+(job.done||0)+' companies';
           }
