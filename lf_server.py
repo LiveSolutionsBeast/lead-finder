@@ -43,7 +43,7 @@ from lf_config import get
 from lf_db import (
     get_db, get_all_sessions, get_session, get_session_companies,
     get_session_contacts, upsert_contact, upsert_company,
-    soft_delete_contact, patch_contact, resume_session,
+    soft_delete_contact, patch_contact, resume_session, delete_session,
     get_companies_for_session,
     init_db,  # added 2026-06-07: ensure schema is up-to-date on startup
 )
@@ -409,6 +409,27 @@ async def api_session_resume(
         # Must use /finder/ path — the root / redirects to /finder/ which
         # strips query parameters (fixes View/Resume buttons Issue #4).
         "redirect_url": f"/finder/?session={session_key}",
+    }
+
+
+@app.delete("/api/session/{session_key}")
+async def api_session_delete(
+    session_key: str,
+    _: str = Header(None, alias="X-LF-Key"),
+):
+    """Permanently delete a session and its search_results.
+
+    Companies and contacts are NOT deleted — they may belong to other sessions.
+    """
+    verify_key(_)
+    session = get_session(session_key)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    result = delete_session(session_key)
+    return {
+        "status": "ok",
+        "message": f"Session {session_key} deleted",
+        **result,
     }
 
 

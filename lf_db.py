@@ -644,6 +644,45 @@ def resume_session(session_key: str) -> bool:
     return affected > 0
 
 
+def delete_session(session_key: str) -> dict:
+    """Permanently delete a session and its search_results.
+
+    Companies and contacts are NOT deleted — they may belong to other
+    sessions (joined via industry = search_query).
+
+    Returns dict with counts of deleted rows.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    # Get session id first
+    row = cur.execute(
+        "SELECT id FROM search_sessions WHERE session_key=?", (session_key,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return {"deleted": False}
+
+    session_id = row["id"]
+
+    # Delete search_results referencing this session
+    cur.execute("DELETE FROM search_results WHERE session_id=?", (session_id,))
+    results_deleted = cur.rowcount
+
+    # Delete the session itself
+    cur.execute("DELETE FROM search_sessions WHERE id=?", (session_id,))
+    session_deleted = cur.rowcount
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "deleted": session_deleted > 0,
+        "session_rows": session_deleted,
+        "result_rows": results_deleted,
+    }
+
+
 def get_company_by_id(company_id: int) -> dict | None:
     conn = get_db()
     cur = conn.cursor()

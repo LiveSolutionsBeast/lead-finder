@@ -27,6 +27,7 @@ tr:hover td{background:#1e293b}
 .btn-sm{padding:0.4rem 0.8rem;font-size:0.8rem}
 .btn-orange{background:#f59e0b;color:#0f172a}
 .btn-green{background:#22c55e;color:#0f172a}
+.btn-red{background:#ef4444;color:#fff}
 .hidden{display:none}
 .badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600}
 .badge-local{background:#22c55e33;color:#22c55e}
@@ -166,7 +167,7 @@ async function loadSessions() {
     for (let i = 0; i < maxShow; i++) {
       const s = sessions[i];
       const created = s.created_at ? s.created_at.substring(0,16).replace('T',' ') : '';
-       tbody.innerHTML += '<tr><td style="font-family:monospace;color:#38bdf8;">'+s.session_key+'</td><td>'+s.industry+'</td><td>'+s.city+'</td><td>'+s.state+'</td><td>'+created+'</td><td><button class="btn btn-sm" onclick="loadSession(\''+s.session_key+'\')">View</button> <button class="btn btn-sm btn-orange" onclick="resumeSession(\''+s.session_key+'\')">Resume</button> <button class="btn btn-sm btn-green" onclick="exportSession(\''+s.session_key+'\')">Export</button></td></tr>';
+       tbody.innerHTML += '<tr><td style="font-family:monospace;color:#38bdf8;">'+s.session_key+'</td><td>'+s.industry+'</td><td>'+s.city+'</td><td>'+s.state+'</td><td>'+created+'</td><td><button class="btn btn-sm" onclick="loadSession(\''+s.session_key+'\')">View</button> <button class="btn btn-sm btn-orange" onclick="resumeSession(\''+s.session_key+'\')">Resume</button> <button class="btn btn-sm btn-green" onclick="exportSession(\''+s.session_key+'\')">Export</button> <button class="btn btn-sm btn-red" onclick="deleteSession(\''+s.session_key+'\')">Delete</button></td></tr>';
     }
     // Wire up sortable headers on the main sessions table (only once)
     const table = tbody.closest('table');
@@ -322,6 +323,24 @@ async function loadSession(sk) {
 
 function exportSession(sk) {
   window.open(API_BASE+'/export/contacts/'+sk, '_blank');
+}
+
+async function deleteSession(sk) {
+  if (!confirm('Permanently delete session '+sk+'?\n\nThis cannot be undone. Companies and contacts will NOT be deleted.')) return;
+  try {
+    const r = await fetch(API_BASE+'/session/'+sk, {
+      method: 'DELETE',
+      headers: {'X-LF-Key': API_KEY}
+    });
+    const d = await r.json();
+    if (r.ok) {
+      alert('Session deleted'+(d.result_rows ? ' ('+d.result_rows+' search results removed)' : ''));
+      loadSessions();
+      loadStats();
+    } else {
+      alert('Delete failed: '+(d.detail||'unknown error'));
+    }
+  } catch(e) { console.error('deleteSession error:', e); alert('Error deleting session: '+e.message); }
 }
 
 async function resumeSession(sk) {
