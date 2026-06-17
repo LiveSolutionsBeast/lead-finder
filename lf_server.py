@@ -45,7 +45,7 @@ from lf_db import (
     get_session_contacts, upsert_contact, upsert_company,
     soft_delete_contact, patch_contact, resume_session, delete_session,
     get_companies_for_session, bulk_soft_delete_companies,
-    create_company_manual,
+    create_company_manual, bulk_soft_delete_contacts,
     init_db,  # added 2026-06-07: ensure schema is up-to-date on startup
 )
 from lf_search import search_companies as google_search, enrich_company_details
@@ -841,6 +841,153 @@ async def api_patch_contact(
     if not success:
         raise HTTPException(status_code=404, detail="Contact not found")
     return {"status": "ok", "message": f"Contact {contact_id} updated"}
+
+
+@app.post("/api/contacts/bulk-delete")
+async def api_bulk_delete_contacts(
+    body: dict,
+    _: str = Header(None, alias="X-LF-Key"),
+):
+    """Soft-delete multiple contacts by ID list."""
+    verify_key(_)
+    ids = body.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=400, detail="No contact IDs provided")
+    try:
+        int_ids = [int(i) for i in ids]
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid contact ID format")
+    affected = bulk_soft_delete_contacts(int_ids)
+    return {
+        "status": "ok",
+        "message": f"Deleted {affected} contacts",
+        "deleted_count": affected,
+    }
+
+
+@app.post("/api/contacts/bulk-validate-emails")
+async def api_bulk_validate_contacts_emails(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    _: str = Header(None, alias="X-LF-Key"),
+):
+    """Bulk-validate emails for specific contact IDs. Runs in background."""
+    verify_key(_)
+    ids = body.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=400, detail="No contact IDs provided")
+    try:
+        int_ids = [int(i) for i in ids]
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid contact ID format")
+
+    # Fetch contacts with emails
+    conn = get_db()
+    cur = conn.cursor()
+    placeholders = ",".join("?" * len(int_ids))
+    rows = cur.execute(
+        f"SELECT id, email FROM contacts WHERE id IN ({placeholders}) AND email IS NOT NULL AND email != '' AND (is_deleted IS NULL OR is_deleted=0)",
+        int_ids,
+    ).fetchall()
+    conn.close()
+
+    contacts_to_validate = [dict(r) for r in rows]
+    if not contacts_to_validate:
+        return {"status": "no_emails", "message": "No contacts with emails found in selection"}
+
+    import uuid as _uuid
+    job_id = f"val_{_uuid.uuid4().hex[:12]}"
+    create_validation_job(job_id, total=len(contacts_to_validate))
+
+    async def _run_validation():
+        from lf_email_validator import check_email
+        from lf_db import get_db as _get_db
+        try:
+            update_validation_job(job_id, status="running",
+                                  started_at=datetime.now(timezone.utc).isoformat())
+            for i, ct in enumerate(contacts_to_validate):
+                email = ct["email"].strip()
+                result = check_email(email).to_dict()
+                try:
+                    set_cached_validation(result)
+                except Exception:
+                    pass
+                ready = 1 if result["status"] == "Okay to Send" else 0
+                rejected_reason = result.get("analysis", "") if result["status"] == "Do Not Send" else None
+                try:
+                    _conn = _get_db()
+                    _cur = _conn.cursor()
+                    _cur.execute(
+                        "UPDATE contacts SET smtp_validation_status=?, smtp_validated_at=?, "
+                        "smtp_validation_code=?, email_ready_for_export=?, email_rejected_reason=? "
+                        "WHERE id=?",
+                        (result["status"], result["validated_at"], result["smtp_code"],
+                         ready, rejected_reason, ct["id"]),
+                    )
+                    _conn.commit()
+                    _conn.close()
+                except Exception:
+                    pass
+                update_validation_job(job_id, done=i + 1)
+            update_validation_job(job_id, status="completed",
+                                  finished_at=datetime.now(timezone.utc).isoformat())
+        except Exception as e:
+            logger.error(f"Contact validation job {job_id} failed: {e}")
+            update_validation_job(job_id, status="failed")
+
+    background_tasks.add_task(_run_validation)
+    return {
+        "job_id": job_id,
+        "total": len(contacts_to_validate),
+        "message": f"Validating {len(contacts_to_validate)} emails in background",
+    }
+
+
+@app.post("/api/contact/{contact_id}/validate-email")
+async def api_validate_single_contact_email(
+    contact_id: int,
+    _: str = Header(None, alias="X-LF-Key"),
+):
+    """Validate a single contact's email via SMTP probe."""
+    verify_key(_)
+    conn = get_db()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT id, email FROM contacts WHERE id=? AND (is_deleted IS NULL OR is_deleted=0)", (contact_id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    email = (row["email"] or "").strip()
+    if not email:
+        return {"status": "no_email", "message": "Contact has no email"}
+
+    from lf_email_validator import check_email
+    result = check_email(email).to_dict()
+    try:
+        set_cached_validation(result)
+    except Exception:
+        pass
+    ready = 1 if result["status"] == "Okay to Send" else 0
+    rejected_reason = result.get("analysis", "") if result["status"] == "Do Not Send" else None
+    try:
+        _conn = get_db()
+        _cur = _conn.cursor()
+        _cur.execute(
+            "UPDATE contacts SET smtp_validation_status=?, smtp_validated_at=?, "
+            "smtp_validation_code=?, email_ready_for_export=?, email_rejected_reason=? "
+            "WHERE id=?",
+            (result["status"], result["validated_at"], result["smtp_code"],
+             ready, rejected_reason, contact_id),
+        )
+        _conn.commit()
+        _conn.close()
+    except Exception:
+        pass
+    return {
+        "status": "ok",
+        "email": email,
+        "validation": result["status"],
+        "smtp_code": result.get("smtp_code"),
+    }
 
 
 @app.post("/api/contact/{contact_id}/verify-title")

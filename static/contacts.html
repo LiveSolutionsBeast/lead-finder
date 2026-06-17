@@ -22,23 +22,37 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 input,select,textarea{padding:0.5rem 0.8rem;background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:6px;font-size:0.8rem;min-width:140px}
 input:focus,select:focus,textarea:focus{outline:none;border-color:#38bdf8}
 .btn{padding:0.5rem 1.2rem;background:#38bdf8;color:#0f172a;border:none;border-radius:6px;font-size:0.85rem;font-weight:600;cursor:pointer}
-.btn-sm{padding:0.25rem 0.5rem;font-size:0.75rem;border-radius:4px;cursor:pointer;border:none;font-weight:600}
+.btn-sm{padding:2px 5px;font-size:0.7rem;border-radius:3px;cursor:pointer;border:none;font-weight:600;min-width:20px;min-height:20px;text-align:center;line-height:1}
 .btn-red{background:#ef4444;color:#fff}
 .btn-green{background:#22c55e;color:#fff}
-.btn-orange{background:#f59e0b;color:#fff;color:#fff}
+.btn-orange{background:#f59e0b;color:#fff}
 .btn-blue{background:#38bdf8;color:#0f172a}
+.btn-purple{background:#8b5cf6;color:#fff}
+.btn-slate{background:#334155;color:#94a3b8}
 .table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:0.8rem}
-th{text-align:left;padding:0.5rem 0.6rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.7rem;text-transform:uppercase;white-space:nowrap}
-td{padding:0.5rem 0.6rem;border-bottom:1px solid #1e293b}
+table{width:100%;border-collapse:collapse;font-size:0.8rem;table-layout:fixed}
+th{text-align:left;padding:0.5rem 0.6rem;background:#0f172a;color:#64748b;font-weight:600;font-size:0.7rem;text-transform:uppercase;white-space:nowrap;overflow:hidden}
+td{padding:0.5rem 0.6rem;border-bottom:1px solid #1e293b;overflow:hidden;text-overflow:ellipsis}
 tr:hover td{background:#1e293b}
+/* Column widths — 13 columns total (checkbox + 12 data) */
+th:nth-child(1),td:nth-child(1){width:30px;text-align:center}
+th:nth-child(2),td:nth-child(2){width:13%} /* Name */
+th:nth-child(3),td:nth-child(3){width:13%} /* Title */
+th:nth-child(4),td:nth-child(4){width:12%} /* Company */
+th:nth-child(5),td:nth-child(5){width:13%} /* Email */
+th:nth-child(6),td:nth-child(6){width:11%} /* Pattern */
+th:nth-child(7),td:nth-child(7){width:6%}  /* Found */
+th:nth-child(8),td:nth-child(8){width:4%}  /* Conf */
+th:nth-child(9),td:nth-child(9){width:5%}  /* Local */
+th:nth-child(10),td:nth-child(10){width:4%} /* Score */
+th:nth-child(11),td:nth-child(11){width:5%} /* LinkedIn */
+th:nth-child(12),td:nth-child(12){width:14%;overflow:visible} /* Actions */
 .badge{display:inline-block;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;font-weight:600}
 .badge-local{background:#22c55e33;color:#22c55e}
 .badge-hq{background:#f59e0b33;color:#f59e0b}
-.badge-blue{background:#38bdf833;color:#38bdf8}
 .company-group-header{background:#0f172a;color:#38bdf8;font-weight:700;font-size:0.85rem}
-.company-group-header td{padding:0.5rem 0.6rem;border-bottom:2px solid #334155}
-
+.company-group-header td{padding:0.5rem 0.6rem;border-bottom:2px solid #334155;overflow:visible}
+.action-group{display:inline-flex;gap:2px;flex-wrap:nowrap;align-items:center}
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:1000}
 .modal-overlay.active{display:flex}
@@ -49,17 +63,21 @@ tr:hover td{background:#1e293b}
 .modal-row input,.modal-row textarea,.modal-row select{width:100%}
 .modal-row textarea{min-height:80px;resize:vertical}
 .modal-actions{display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.5rem}
-
 /* Toast */
 .toast{position:fixed;bottom:2rem;right:2rem;padding:1rem 1.5rem;border-radius:8px;font-size:0.9rem;font-weight:600;z-index:2000;transform:translateY(150%);transition:transform 0.3s}
 .toast.show{transform:translateY(0)}
 .toast-success{background:#22c55e;color:#fff}
 .toast-error{background:#ef4444;color:#fff}
+.toast-info{background:#38bdf8;color:#0f172a}
 .truncate{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .page-controls{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap}
 .page-controls select{padding:0.3rem 0.5rem;font-size:0.8rem;min-width:auto}
 .page-info{color:#94a3b8;font-size:0.8rem}
-/* Sortable column headers (added 2026-06-16) */
+/* Bulk actions */
+.bulk-bar{display:none;align-items:center;gap:0.5rem;margin-bottom:0.5rem;padding:0.6rem 1rem;background:#1e293b;border-radius:6px;border:1px solid #334155}
+.bulk-bar.active{display:flex}
+.bulk-count{color:#38bdf8;font-size:0.85rem;font-weight:600}
+/* Sortable column headers */
 th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:1.1rem;transition:background 0.15s}
 th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
 th.sortable::after{content:'⇅';position:absolute;right:0.4rem;top:50%;transform:translateY(-50%);color:#475569;font-size:0.75rem;opacity:0.5}
@@ -107,9 +125,28 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </select></label>
 <span class="page-info" id="pageInfo"></span>
 </div>
+<div class="bulk-bar" id="bulkBar">
+<span class="bulk-count" id="bulkCount">0 selected</span>
+<button class="btn btn-sm btn-red" onclick="bulkDelete()" title="Soft-delete selected contacts">&#10005; Delete</button>
+<button class="btn btn-sm btn-purple" onclick="bulkValidate()" title="SMTP-validate emails for selected contacts">&#9889; Validate Emails</button>
+<button class="btn btn-sm btn-slate" onclick="clearSelection()" title="Deselect all">Clear</button>
+</div>
 <div class="table-wrap">
 <table>
-<thead><tr><th class="sortable" data-sort-key="full_name">Name</th><th class="sortable" data-sort-key="title">Title</th><th class="sortable" data-sort-key="company_name">Company</th><th class="sortable" data-sort-key="email">Email</th><th class="sortable" data-sort-key="company_email_pattern">Pattern</th><th class="sortable" data-sort-key="found_at">Found</th><th>Conf</th><th>Local</th><th class="sortable" data-sort-key="confidence_score">Score</th><th>LinkedIn</th><th>Actions</th></tr></thead>
+<thead><tr>
+<th><input type="checkbox" id="selectAll" onchange="toggleSelectAll()" title="Select all visible contacts" /></th>
+<th class="sortable" data-sort-key="full_name">Name</th>
+<th class="sortable" data-sort-key="title">Title</th>
+<th class="sortable" data-sort-key="company_name">Company</th>
+<th class="sortable" data-sort-key="email">Email</th>
+<th class="sortable" data-sort-key="company_email_pattern">Pattern</th>
+<th class="sortable" data-sort-key="found_at">Found</th>
+<th>Conf</th>
+<th>Local</th>
+<th class="sortable" data-sort-key="confidence_score">Score</th>
+<th>LinkedIn</th>
+<th>Actions</th>
+</tr></thead>
 <tbody id="contactsTable"></tbody>
 </table>
 </div>
@@ -157,133 +194,96 @@ const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 let currentEditId = null;
 let allContacts = [];
 let companyOptions = [];
-// Sort state (added 2026-06-16)
 let currentSort = { key: 'confidence_score', dir: 'desc' };
+let selectedIds = new Set();
 
-// Generic comparator: handles strings, numbers, nulls.
+// ── Sort helpers ──────────────────────────────────────────────────────────
 function _compareValues(a, b, dir) {
-  // null/undefined sort to the end always
   const aNull = a === null || a === undefined || a === '';
   const bNull = b === null || b === undefined || b === '';
   if (aNull && bNull) return 0;
   if (aNull) return 1;
   if (bNull) return -1;
-  // Numeric vs string
-  if (typeof a === 'number' && typeof b === 'number') {
-    return dir === 'asc' ? a - b : b - a;
-  }
-  const sa = String(a).toLowerCase();
-  const sb = String(b).toLowerCase();
-  // Try numeric comparison if both look numeric
-  const na = parseFloat(sa), nb = parseFloat(sb);
-  if (!isNaN(na) && !isNaN(nb) && /^-?[\d.]+$/.test(sa) && /^-?[\d.]+$/.test(sb)) {
-    return dir === 'asc' ? na - nb : nb - na;
-  }
+  if (typeof a === 'number' && typeof b === 'number') return dir === 'asc' ? a - b : b - a;
+  const sa = String(a).toLowerCase(), sb = String(b).toLowerCase();
   if (sa < sb) return dir === 'asc' ? -1 : 1;
   if (sa > sb) return dir === 'asc' ? 1 : -1;
   return 0;
 }
 
 function sortContacts(contacts, key, dir) {
-  // Return a NEW array sorted by key/dir. Stable sort.
-  return contacts.slice().sort((a, b) => {
-    const av = a ? a[key] : null;
-    const bv = b ? b[key] : null;
-    return _compareValues(av, bv, dir);
-  });
+  return contacts.slice().sort((a, b) => _compareValues(a ? a[key] : null, b ? b[key] : null, dir));
 }
 
-function applyCurrentSort() {
-  return sortContacts(allContacts, currentSort.key, currentSort.dir);
-}
+function applyCurrentSort() { return sortContacts(allContacts, currentSort.key, currentSort.dir); }
 
 function handleSortClick(key) {
-  if (currentSort.key === key) {
-    currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
-  } else {
-    currentSort.key = key;
-    // numeric columns default to desc (highest first), string columns to asc
-    const numericKeys = ['confidence_score', 'found_at', 'company_email_confidence'];
-    currentSort.dir = numericKeys.includes(key) ? 'desc' : 'asc';
-  }
-  // Update header indicators
-  document.querySelectorAll('th.sortable').forEach(th => {
-    th.classList.remove('sort-asc', 'sort-desc');
-    if (th.getAttribute('data-sort-key') === key) {
-      th.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
-    }
-  });
-  // Re-render with the current perPage + groupBy
-  const perPage = parseInt(document.getElementById('perPage').value) || 20;
-  const groupBy = document.getElementById('groupBy').value;
-  renderContacts(applyCurrentSort(), perPage, groupBy);
+  if (currentSort.key === key) { currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc'; }
+  else { currentSort.key = key; const nk = ['confidence_score','found_at','company_email_confidence']; currentSort.dir = nk.includes(key) ? 'desc' : 'asc'; }
+  document.querySelectorAll('th.sortable').forEach(th => { th.classList.remove('sort-asc','sort-desc'); if (th.getAttribute('data-sort-key') === key) th.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc'); });
+  renderContacts(applyCurrentSort(), parseInt(document.getElementById('perPage').value)||20, document.getElementById('groupBy').value);
 }
 
-// Wire up click handlers on sortable headers
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('th.sortable').forEach(th => {
-    th.addEventListener('click', () => handleSortClick(th.getAttribute('data-sort-key')));
-  });
-  // Mark the default sort header
-  const def = document.querySelector('th.sortable[data-sort-key="' + currentSort.key + '"]');
+  document.querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', () => handleSortClick(th.getAttribute('data-sort-key'))));
+  const def = document.querySelector('th.sortable[data-sort-key="'+currentSort.key+'"]');
   if (def) def.classList.add('sort-desc');
 });
 
-// When the Sort dropdown changes, also update the column sort state
-// so the headers stay in sync with the dropdown selection.
 function onSortDropdownChange() {
   const v = document.getElementById('sortBy').value;
-  if (v === 'recent') {
-    currentSort.key = 'found_at';
-    currentSort.dir = 'desc';
-  } else {
-    currentSort.key = 'confidence_score';
-    currentSort.dir = 'desc';
-  }
-  // Update header indicators
-  document.querySelectorAll('th.sortable').forEach(th => {
-    th.classList.remove('sort-asc', 'sort-desc');
-    if (th.getAttribute('data-sort-key') === currentSort.key) {
-      th.classList.add('sort-desc');
-    }
-  });
+  currentSort.key = v === 'recent' ? 'found_at' : 'confidence_score';
+  currentSort.dir = 'desc';
+  document.querySelectorAll('th.sortable').forEach(th => { th.classList.remove('sort-asc','sort-desc'); if (th.getAttribute('data-sort-key') === currentSort.key) th.classList.add('sort-desc'); });
   loadContacts();
 }
 
-async function loadStats() {
+// ── Bulk selection ────────────────────────────────────────────────────────
+function toggleContactSelection(id, checked) { checked ? selectedIds.add(id) : selectedIds.delete(id); updateBulkUI(); }
+function toggleSelectAll() { const c = document.getElementById('selectAll').checked; selectedIds.clear(); if (c) allContacts.forEach(ct => selectedIds.add(ct.id)); document.querySelectorAll('.ct-cb').forEach(cb => cb.checked = c); updateBulkUI(); }
+function clearSelection() { selectedIds.clear(); document.getElementById('selectAll').checked = false; document.querySelectorAll('.ct-cb').forEach(cb => cb.checked = false); updateBulkUI(); }
+function updateBulkUI() { const n = selectedIds.size; document.getElementById('bulkCount').textContent = n + ' selected'; document.getElementById('bulkBar').classList.toggle('active', n > 0); }
+
+async function bulkDelete() {
+  const ids = Array.from(selectedIds);
+  if (!ids.length) return;
+  if (!confirm('Soft-delete ' + ids.length + ' contacts? They can be restored later.')) return;
   try {
-    const r = await fetch(API_BASE+'/stats', {headers: {'X-LF-Key': API_KEY}});
-    if (!r.ok) return;
+    const r = await fetch(API_BASE+'/contacts/bulk-delete', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids}) });
     const d = await r.json();
-    document.getElementById('statCompanies').textContent = d.companies || 0;
-    document.getElementById('statContacts').textContent = d.contacts || 0;
-    document.getElementById('statSessions').textContent = d.sessions || 0;
-  } catch(e) { console.error('stats error:', e); }
+    if (r.ok) { showToast(d.message, 'success'); clearSelection(); loadContacts(); loadStats(); }
+    else showToast('Bulk delete failed: '+(d.detail||'unknown'), 'error');
+  } catch(e) { showToast('Bulk delete error: '+e.message, 'error'); }
 }
+
+async function bulkValidate() {
+  const ids = Array.from(selectedIds);
+  if (!ids.length) return;
+  if (!confirm('SMTP-validate emails for ' + ids.length + ' contacts?\n\nThis runs in the background.')) return;
+  try {
+    const r = await fetch(API_BASE+'/contacts/bulk-validate-emails', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids}) });
+    const d = await r.json();
+    if (r.ok) { showToast(d.message, 'success'); clearSelection(); }
+    else showToast('Validate failed: '+(d.detail||d.message||'unknown'), 'error');
+  } catch(e) { showToast('Validate error: '+e.message, 'error'); }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function escapeHtml(s) { return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function showToast(msg, type) { const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast toast-'+type+' show'; setTimeout(()=>t.classList.remove('show'), 3500); }
+
+// ── Data loading ──────────────────────────────────────────────────────────
+async function loadStats() { try { const r = await fetch(API_BASE+'/stats',{headers:{'X-LF-Key':API_KEY}}); if (!r.ok) return; const d = await r.json(); document.getElementById('statCompanies').textContent = d.companies||0; document.getElementById('statContacts').textContent = d.contacts||0; document.getElementById('statSessions').textContent = d.sessions||0; } catch(e) {} }
 
 async function loadDropdowns() {
   try {
-    const r = await fetch(API_BASE+'/contacts/dropdowns', {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/contacts/dropdowns',{headers:{'X-LF-Key':API_KEY}});
     if (!r.ok) return;
     const d = await r.json();
-
-    const companySel = document.getElementById('filterCompany');
-    companySel.innerHTML = '<option value="">All Companies</option>' +
-      (d.companies||[]).map(c => '<option value="'+escapeHtml(c)+'">'+escapeHtml(c)+'</option>').join('');
-
-    const titleSel = document.getElementById('filterTitle');
-    titleSel.innerHTML = '<option value="">All Titles</option>' +
-      (d.titles||[]).map(t => '<option value="'+escapeHtml(t)+'">'+escapeHtml(t)+'</option>').join('');
-
-    const citySel = document.getElementById('filterCity');
-    citySel.innerHTML = '<option value="">All Cities</option>' +
-      (d.cities||[]).map(c => '<option value="'+escapeHtml(c)+'">'+escapeHtml(c)+'</option>').join('');
-  } catch(e) { console.error('dropdowns error:', e); }
-}
-
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    document.getElementById('filterCompany').innerHTML = '<option value="">All Companies</option>' + (d.companies||[]).map(c => '<option value="'+escapeHtml(c)+'">'+escapeHtml(c)+'</option>').join('');
+    document.getElementById('filterTitle').innerHTML = '<option value="">All Titles</option>' + (d.titles||[]).map(t => '<option value="'+escapeHtml(t)+'">'+escapeHtml(t)+'</option>').join('');
+    document.getElementById('filterCity').innerHTML = '<option value="">All Cities</option>' + (d.cities||[]).map(c => '<option value="'+escapeHtml(c)+'">'+escapeHtml(c)+'</option>').join('');
+  } catch(e) {}
 }
 
 async function loadContacts() {
@@ -294,9 +294,7 @@ async function loadContacts() {
   const titleText = document.getElementById('filterTitleText').value.trim();
   const perPage = parseInt(document.getElementById('perPage').value) || 20;
   const groupBy = document.getElementById('groupBy').value;
-  // Issue #6: 'Most Recent' sort option
   const sortBy = document.getElementById('sortBy').value;
-
   let url = API_BASE+'/contacts?limit=500&derive_emails=true';
   if (compText && !company) url += '&company_name='+encodeURIComponent(compText);
   else if (company) url += '&company_name='+encodeURIComponent(company);
@@ -304,235 +302,203 @@ async function loadContacts() {
   else if (title) url += '&title='+encodeURIComponent(title);
   if (city) url += '&city='+encodeURIComponent(city);
   if (sortBy) url += '&sort='+encodeURIComponent(sortBy);
-
   try {
-    const r = await fetch(url, {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(url, {headers:{'X-LF-Key':API_KEY}});
     const data = await r.json();
     allContacts = data.contacts || [];
     renderContacts(applyCurrentSort(), perPage, groupBy);
-  } catch(e) {
-    showToast('Failed to load contacts', 'error');
-  }
+  } catch(e) { showToast('Failed to load contacts', 'error'); }
 }
 
+// ── Render ────────────────────────────────────────────────────────────────
 function renderContacts(contacts, perPage, groupBy) {
   const tbody = document.getElementById('contactsTable');
   tbody.innerHTML = '';
   const pageInfo = document.getElementById('pageInfo');
+  if (contacts.length === 0) { pageInfo.textContent = 'No contacts found'; return; }
 
-  if (contacts.length === 0) {
-    pageInfo.textContent = 'No contacts found';
-    return;
-  }
-
-  // Group by company if selected
   let grouped = {};
-  if (groupBy === 'company') {
-    for (const ct of contacts) {
-      const key = ct.company_name || 'Unknown Company';
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(ct);
-    }
-  } else {
-    grouped = {'': contacts};
-  }
+  if (groupBy === 'company') { for (const ct of contacts) { const k = ct.company_name||'Unknown'; if (!grouped[k]) grouped[k] = []; grouped[k].push(ct); } }
+  else { grouped = {'': contacts}; }
 
   const companyKeys = Object.keys(grouped).sort();
-  const totalContacts = contacts.length;
-  pageInfo.textContent = totalContacts + ' contacts' + (totalContacts > perPage ? ' (showing ' + perPage + ')' : '');
+  const total = contacts.length;
+  pageInfo.textContent = total + ' contacts' + (total > perPage ? ' (showing '+perPage+')' : '');
 
   let count = 0;
-  const maxShow = Math.min(perPage, totalContacts);
+  const maxShow = Math.min(perPage, total);
 
   for (const companyName of companyKeys) {
-    const groupContacts = grouped[companyName];
-    const companyId = groupContacts[0]?.company_id || '';
-    for (const ct of groupContacts) {
+    const group = grouped[companyName];
+    const companyId = group[0]?.company_id || '';
+    for (const ct of group) {
       if (count >= maxShow) break;
       count++;
-      if (count === 1 || (groupBy === 'company' && ct === groupContacts[0])) {
-        // Company group header with Add Contact button (Issue #6: colspan=10 for new "Found" column)
-        const headerRow = document.createElement('tr');
-        headerRow.className = 'company-group-header';
-        headerRow.dataset.companyId = companyId;
-        headerRow.innerHTML = '<td colspan="10">&#9654; ' + escapeHtml(companyName) + ' (' + groupContacts.length + ')</td>' +
-          '<td><button class="btn-sm btn-green" onclick="openAddContactForCompany(' + companyId + ',\'' + escapeHtml(companyName).replace(/'/g,"\\'") + '\')" title="Add contact to ' + escapeHtml(companyName) + '">+ Add</button></td>';
-        tbody.appendChild(headerRow);
+      // Group header
+      if (count === 1 || (groupBy === 'company' && ct === group[0])) {
+        const hr = document.createElement('tr');
+        hr.className = 'company-group-header';
+        hr.innerHTML = '<td colspan="1">&#9654;</td><td colspan="11" style="overflow:visible;">' + escapeHtml(companyName) + ' (' + group.length + ')</td><td style="overflow:visible;"><button class="btn-sm btn-green" onclick="openAddContactForCompany('+companyId+'," title="Add contact to '+escapeHtml(companyName)+'">+ Add</button></td>';
+        tbody.appendChild(hr);
       }
 
       const tr = document.createElement('tr');
       tr.dataset.contactId = ct.id;
-      const conf = (ct.confidence_score||0).toFixed(1);
-      const badge = ct.is_local ? '<span class="badge badge-local">LOCAL</span>' : '<span class="badge badge-hq">HQ</span>';
-      const li = ct.linkedin_url ? '<a href="'+escapeHtml(ct.linkedin_url)+'" target="_blank" style="color:#38bdf8;text-decoration:none;" title="'+escapeHtml(ct.linkedin_url)+'">&#x1F517;</a>' : '<span style="color:#64748b;">—</span>';
-      const email = ct.email ? '<span style="color:#22c55e;font-size:0.75rem;word-break:break-all;">'+escapeHtml(ct.email)+'</span>' : (ct.company_email_pattern ? '<span style="color:#64748b;font-size:0.75rem;">(derivable)</span>' : '<span style="color:#64748b;">—</span>');
-      const pattern = ct.company_email_pattern || '';
+
+      // Email cell
+      const emailHtml = ct.email
+        ? '<span style="color:#22c55e;font-size:0.75rem;" title="'+escapeHtml(ct.email)+'">'+escapeHtml(ct.email)+'</span>'
+        : (ct.company_email_pattern ? '<span style="color:#94a3b8;font-size:0.7rem;">(derivable)</span>' : '<span style="color:#64748b;">—</span>');
+
+      // Pattern cell
+      const pat = ct.company_email_pattern || '';
       const patConf = ct.company_email_confidence || 0;
-      const patBadge = pattern ? (patConf >= 1.0 ? '<span style="color:#22c55e;font-size:0.7rem;">&#10003; '+escapeHtml(pattern)+'</span>' : '<span style="color:#f59e0b;font-size:0.7rem;">~ '+escapeHtml(pattern)+'</span>') : '<span style="color:#64748b;font-size:0.7rem;">—</span>';
-      const patConfStr = pattern ? (patConf*100).toFixed(0)+'%' : '';
-      // Issue #6: format found_at for display
+      const patHtml = pat
+        ? (patConf >= 1.0
+          ? '<span style="color:#22c55e;font-size:0.7rem;" title="Validated pattern ('+(patConf*100).toFixed(0)+'%)">✓ '+escapeHtml(pat)+'</span>'
+          : '<span style="color:#f59e0b;font-size:0.7rem;" title="Estimated pattern ('+(patConf*100).toFixed(0)+'%)">~ '+escapeHtml(pat)+'</span>')
+        : '<span style="color:#64748b;font-size:0.7rem;">—</span>';
+
+      // Found date
       let foundDisplay = '<span style="color:#64748b;">—</span>';
-      if (ct.found_at) {
-        // found_at is an ISO timestamp; show as YYYY-MM-DD
-        const d = (ct.found_at || '').substring(0, 10);
-        foundDisplay = '<span style="color:#94a3b8;font-size:0.75rem;" title="'+escapeHtml(ct.found_at)+'">'+escapeHtml(d)+'</span>';
+      if (ct.found_at) { const d = (ct.found_at||'').substring(0,10); foundDisplay = '<span style="color:#94a3b8;font-size:0.75rem;" title="'+escapeHtml(ct.found_at)+'">'+escapeHtml(d)+'</span>'; }
+
+      // Confidence
+      const conf = (ct.confidence_score||0).toFixed(1);
+
+      // Local badge
+      const badge = ct.is_local ? '<span class="badge badge-local">L</span>' : '<span class="badge badge-hq">HQ</span>';
+
+      // LinkedIn
+      const li = ct.linkedin_url ? '<a href="'+escapeHtml(ct.linkedin_url)+'" target="_blank" style="color:#38bdf8;text-decoration:none;" title="'+escapeHtml(ct.linkedin_url)+'">&#128279;</a>' : '<span style="color:#64748b;">—</span>';
+
+      // Title
+      const titleDisplay = ct.title || '-';
+
+      // Pattern confidence string
+      const patConfStr = pat ? (patConf*100).toFixed(0)+'%' : '';
+
+      // Checkbox
+      const cbChecked = selectedIds.has(ct.id) ? ' checked' : '';
+
+      // Action buttons — compact icons with tooltips, no spaces between
+      let actions = '';
+      actions += '<button class="btn-sm btn-green" onclick="openEdit('+ct.id+')" title="Edit contact">&#9998;</button>';
+      actions += '<button class="btn-sm btn-red" onclick="deleteContact('+ct.id+')" title="Soft-delete contact">&#10005;</button>';
+      actions += '<button class="btn-sm btn-orange" onclick="exportContact('+ct.id+')" title="Export as CSV">&#8681;</button>';
+      if (!ct.email && ct.company_email_pattern) {
+        actions += '<button class="btn-sm btn-blue" onclick="deriveEmail('+ct.id+')" title="Derive email from pattern">&#9993;</button>';
       }
+      actions += '<button class="btn-sm btn-purple" onclick="validateEmail('+ct.id+')" title="SMTP-validate this email">&#9889;</button>';
+      actions += '<button class="btn-sm btn-blue" onclick="verifyTitle('+ct.id+')" title="AI-verify title" style="background:#8b5cf6;">&#9733;</button>';
 
-      const deriveBtn = (!ct.email && ct.company_email_pattern) ? '<button class="btn-sm btn-blue" onclick="deriveEmail('+ct.id+')" title="Derive email from pattern">&#9993;</button>' : '';
-      const verifyBtn = '<button class="btn-sm btn-blue" onclick="verifyTitle('+ct.id+')" title="AI-verify this contact\'s title" style="background:#8b5cf6;color:#fff;">&#9889;</button>';
+      tr.innerHTML =
+        '<td><input type="checkbox" class="ct-cb" data-id="'+ct.id+'"'+cbChecked+' /></td>'
+        + '<td style="font-weight:600;" title="'+escapeHtml(ct.full_name)+'">'+escapeHtml(ct.full_name)+'</td>'
+        + '<td title="'+escapeHtml(ct.title||'')+'">'+escapeHtml(titleDisplay)+'</td>'
+        + '<td title="'+escapeHtml(ct.company_name||'')+'">'+escapeHtml(ct.company_name||'')+'</td>'
+        + '<td>'+emailHtml+'</td>'
+        + '<td>'+patHtml+'</td>'
+        + '<td>'+foundDisplay+'</td>'
+        + '<td style="color:#94a3b8;font-size:0.75rem;">'+patConfStr+'</td>'
+        + '<td>'+badge+'</td>'
+        + '<td style="text-align:center;">'+conf+'</td>'
+        + '<td>'+li+'</td>'
+        + '<td style="overflow:visible;"><div class="action-group">'+actions+'</div></td>';
 
-      const actions = '<button class="btn-sm btn-green" onclick="openEdit('+ct.id+','+JSON.stringify(ct).replace(/"/g,'&quot;')+')">&#9998;</button> <button class="btn-sm btn-red" onclick="deleteContact('+ct.id+',\''+escapeHtml(ct.full_name).replace(/'/g,"\\'")+'\')">&#128465;</button> <button class="btn-sm btn-orange" onclick="exportContact('+JSON.stringify(ct).replace(/"/g,'&quot;')+')">&#128230;</button>'+deriveBtn+verifyBtn;
-
-      tr.innerHTML = '<td style="font-weight:600;">'+escapeHtml(ct.full_name)+'</td>'+
-        '<td><span class="truncate" title="'+escapeHtml(ct.title||'')+'">'+escapeHtml(ct.title||'-')+'</span></td>'+
-        '<td><span class="truncate" title="'+escapeHtml(ct.company_name||'')+'">'+escapeHtml(ct.company_name||'')+'</span></td>'+
-        '<td>'+email+'</td><td>'+patBadge+'</td><td>'+foundDisplay+'</td><td style="color:#94a3b8;font-size:0.75rem;">'+patConfStr+'</td><td>'+badge+'</td><td>'+conf+'</td><td>'+li+'</td><td>'+actions+'</td>';
+      // Wire checkbox
+      tr.querySelector('.ct-cb').addEventListener('change', function() { toggleContactSelection(ct.id, this.checked); });
       tbody.appendChild(tr);
     }
     if (count >= maxShow) break;
   }
 }
 
+// ── Contact actions ───────────────────────────────────────────────────────
 async function deriveEmail(contactId) {
   try {
-    const r = await fetch(API_BASE+'/contact/'+contactId+'/derive-email', {
-      method: 'POST',
-      headers: {'X-LF-Key': API_KEY}
-    });
+    const r = await fetch(API_BASE+'/contact/'+contactId+'/derive-email', { method:'POST', headers:{'X-LF-Key':API_KEY} });
     const d = await r.json();
-    if (d.status === 'ok') {
-      showToast('Email derived: '+d.email, 'success');
-      loadContacts();
-    } else {
-      showToast(d.reason || 'Failed to derive email', 'error');
-    }
-  } catch(e) {
-    showToast('Derive error: '+e.message, 'error');
-  }
+    if (d.status === 'ok') { showToast('Email derived: '+d.email, 'success'); loadContacts(); }
+    else showToast(d.reason || 'Failed to derive email', 'error');
+  } catch(e) { showToast('Derive error: '+e.message, 'error'); }
+}
+
+async function validateEmail(contactId) {
+  try {
+    const r = await fetch(API_BASE+'/contact/'+contactId+'/validate-email', { method:'POST', headers:{'X-LF-Key':API_KEY} });
+    const d = await r.json();
+    if (d.status === 'ok') { showToast('Email: '+d.email+' → '+d.validation, 'success'); loadContacts(); }
+    else showToast(d.message || d.detail || 'Validation failed', 'error');
+  } catch(e) { showToast('Validate error: '+e.message, 'error'); }
 }
 
 async function verifyTitle(contactId) {
   showToast('AI verifying title...', 'info');
   try {
-    const r = await fetch(API_BASE+'/contact/'+contactId+'/verify-title', {
-      method: 'POST',
-      headers: {'X-LF-Key': API_KEY}
-    });
+    const r = await fetch(API_BASE+'/contact/'+contactId+'/verify-title', { method:'POST', headers:{'X-LF-Key':API_KEY} });
     const d = await r.json();
-    if (d.status === 'ok') {
-      showToast('Title verified: "'+d.previous_title+'" → "'+d.title+'" (confidence: '+(d.confidence*100).toFixed(0)+'%)', 'success');
-      loadContacts();
-    } else {
-      showToast(d.reason || 'Title verification failed', 'error');
-    }
-  } catch(e) {
-    showToast('Verify error: '+e.message, 'error');
-  }
+    if (d.status === 'ok') { showToast('Title: "'+d.previous_title+'" → "'+d.title+'" ('+(d.confidence*100).toFixed(0)+'%)', 'success'); loadContacts(); }
+    else showToast(d.reason || 'Title verification failed', 'error');
+  } catch(e) { showToast('Verify error: '+e.message, 'error'); }
 }
 
-function exportContact(contact) {
-  const rows = [['Full Name','Title','Company','Email','LinkedIn URL','Notes','Company Email Pattern','Company Email Confidence','Is Local','Confidence Score','Data Provenance']];
-  const vals = [
-    contact.full_name||'', contact.title||'', contact.company_name||'', contact.email||'',
-    contact.linkedin_url||'', contact.manual_notes||'', contact.company_email_pattern||'',
-    (contact.company_email_confidence||0).toFixed(2), contact.is_local ? 'YES' : 'NO',
-    (contact.confidence_score||0).toFixed(2), contact.data_provenance||''
-  ];
-  rows.push(vals);
-  const csvContent = rows.map(e => e.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
-  const blob = new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = 'contact_'+contact.id+'.csv';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+async function deleteContact(id) {
+  const ct = allContacts.find(c => c.id === id);
+  const name = ct ? ct.full_name : 'this contact';
+  if (!confirm('Soft-delete "'+name+'"?')) return;
+  const r = await fetch(API_BASE+'/contact/'+id, { method:'DELETE', headers:{'X-LF-Key':API_KEY} });
+  if (r.ok) { showToast('Contact deleted', 'success'); loadContacts(); loadStats(); }
+  else showToast('Failed to delete', 'error');
 }
 
-async function loadCompanyOptions() {
-  if (companyOptions.length > 0) return;
-  const r = await fetch(API_BASE+'/companies?limit=500', {headers: {'X-LF-Key': API_KEY}});
-  const d = await r.json();
-  companyOptions = d.companies || [];
+async function exportContact(id) {
+  const ct = allContacts.find(c => c.id === id);
+  if (!ct) return;
+  const rows = [['Full Name','Title','Company','Email','LinkedIn URL','Pattern','Confidence Score','Is Local','Data Provenance']];
+  rows.push([ct.full_name||'',ct.title||'',ct.company_name||'',ct.email||'',ct.linkedin_url||'',ct.company_email_pattern||'',(ct.confidence_score||0).toFixed(2),ct.is_local?'YES':'NO',ct.data_provenance||'']);
+  const csv = rows.map(e=>e.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'contact_'+id+'.csv';
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  showToast('Exported '+ct.full_name, 'success');
 }
 
-async function openEdit(id, contact) {
+// ── Modals ────────────────────────────────────────────────────────────────
+async function loadCompanyOptions() { if (companyOptions.length > 0) return; const r = await fetch(API_BASE+'/companies?limit=500',{headers:{'X-LF-Key':API_KEY}}); const d = await r.json(); companyOptions = d.companies||[]; }
+
+async function openEdit(id) {
+  const ct = allContacts.find(c => c.id === id);
+  if (!ct) return;
   currentEditId = id;
   await loadCompanyOptions();
   const sel = document.getElementById('editCompany');
   sel.innerHTML = '<option value="">— Select Company —</option>';
-  for (const c of companyOptions) {
-    const sel2 = c.id === contact.company_id ? 'selected' : '';
-    sel.innerHTML += '<option value="'+c.id+'" '+sel2+'>'+escapeHtml(c.name)+' ('+escapeHtml(c.city||'')+', '+escapeHtml(c.state||'')+')</option>';
-  }
-  document.getElementById('editName').value = contact.full_name || '';
-  document.getElementById('editTitle').value = contact.title || '';
-  document.getElementById('editLinkedIn').value = contact.linkedin_url || '';
-  document.getElementById('editNotes').value = contact.manual_notes || '';
+  for (const c of companyOptions) { sel.innerHTML += '<option value="'+c.id+'"'+(c.id===ct.company_id?' selected':'')+'>'+escapeHtml(c.name)+' ('+escapeHtml(c.city||'')+', '+escapeHtml(c.state||'')+')</option>'; }
+  document.getElementById('editName').value = ct.full_name || '';
+  document.getElementById('editTitle').value = ct.title || '';
+  document.getElementById('editLinkedIn').value = ct.linkedin_url || '';
+  document.getElementById('editNotes').value = ct.manual_notes || '';
   document.getElementById('editModal').classList.add('active');
 }
-
-function closeEditModal() {
-  document.getElementById('editModal').classList.remove('active');
-  currentEditId = null;
-}
-
+function closeEditModal() { document.getElementById('editModal').classList.remove('active'); currentEditId = null; }
 async function saveEdit() {
   if (!currentEditId) return;
   const companyId = document.getElementById('editCompany').value;
-  const body = {
-    full_name: document.getElementById('editName').value.trim(),
-    title: document.getElementById('editTitle').value.trim(),
-    linkedin_url: document.getElementById('editLinkedIn').value.trim(),
-    manual_notes: document.getElementById('editNotes').value.trim(),
-  };
+  const body = { full_name: document.getElementById('editName').value.trim(), title: document.getElementById('editTitle').value.trim(), linkedin_url: document.getElementById('editLinkedIn').value.trim(), manual_notes: document.getElementById('editNotes').value.trim() };
   if (companyId) body.company_id = parseInt(companyId);
-  const r = await fetch(API_BASE+'/contact/'+currentEditId, {
-    method: 'PATCH',
-    headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
-    body: JSON.stringify(body)
-  });
-  if (r.ok) {
-    showToast('Contact updated', 'success');
-    closeEditModal();
-    loadContacts();
-  } else {
-    showToast('Failed to update contact', 'error');
-  }
+  const r = await fetch(API_BASE+'/contact/'+currentEditId, { method:'PATCH', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify(body) });
+  if (r.ok) { showToast('Contact updated', 'success'); closeEditModal(); loadContacts(); }
+  else showToast('Failed to update', 'error');
 }
 
-async function deleteContact(id, name) {
-  if (!confirm('Soft-delete "'+name+'"?\n\nIt will be hidden but recoverable.')) return;
-  const r = await fetch(API_BASE+'/contact/'+id, {method: 'DELETE', headers: {'X-LF-Key': API_KEY}});
-  if (r.ok) {
-    showToast('Contact deleted', 'success');
-    const row = document.querySelector('tr[data-contact-id="'+id+'"]');
-    if (row) { row.style.transition='opacity 0.3s'; row.style.opacity='0'; setTimeout(()=>row.remove(), 350); }
-  } else {
-    showToast('Failed to delete', 'error');
-  }
-}
-
-function showToast(msg, type) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast toast-'+type+' show';
-  setTimeout(()=>t.classList.remove('show'), 3000);
-}
-
-// ── Add Contact Modal ─────────────────────────────────────────────────────────
 let addCompanyId = null;
-
 async function openAddContact() {
   addCompanyId = null;
   const sel = document.getElementById('addCompany');
-  // Always refresh/populate the full company list
-  const r = await fetch(API_BASE+'/companies?limit=500', {headers: {'X-LF-Key': API_KEY}});
+  const r = await fetch(API_BASE+'/companies?limit=500',{headers:{'X-LF-Key':API_KEY}});
   const d = await r.json();
-  sel.innerHTML = '<option value="">— Select Company —</option>';
-  for (const c of (d.companies||[])) {
-    sel.innerHTML += '<option value="'+c.id+'">'+escapeHtml(c.name)+' ('+escapeHtml(c.city||'')+', '+escapeHtml(c.state||'')+')</option>';
-  }
+  sel.innerHTML = '<option value="">— Select Company —</option>' + (d.companies||[]).map(c => '<option value="'+c.id+'">'+escapeHtml(c.name)+' ('+escapeHtml(c.city||'')+', '+escapeHtml(c.state||'')+')</option>').join('');
   sel.value = '';
   document.getElementById('addName').value = '';
   document.getElementById('addTitle').value = '';
@@ -540,18 +506,13 @@ async function openAddContact() {
   document.getElementById('addNotes').value = '';
   document.getElementById('addModal').classList.add('active');
 }
-
 async function openAddContactForCompany(companyId, companyName) {
   addCompanyId = companyId;
   const sel = document.getElementById('addCompany');
-  // Populate if empty
   if (sel.options.length <= 1) {
-    const r = await fetch(API_BASE+'/companies?limit=500', {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/companies?limit=500',{headers:{'X-LF-Key':API_KEY}});
     const d = await r.json();
-    sel.innerHTML = '<option value="">— Select Company —</option>';
-    for (const c of (d.companies||[])) {
-      sel.innerHTML += '<option value="'+c.id+'">'+escapeHtml(c.name)+' ('+escapeHtml(c.city||'')+', '+escapeHtml(c.state||'')+')</option>';
-    }
+    sel.innerHTML = '<option value="">— Select Company —</option>' + (d.companies||[]).map(c => '<option value="'+c.id+'">'+escapeHtml(c.name)+' ('+escapeHtml(c.city||'')+', '+escapeHtml(c.state||'')+')</option>').join('');
   }
   sel.value = companyId;
   document.getElementById('addName').value = '';
@@ -560,53 +521,28 @@ async function openAddContactForCompany(companyId, companyName) {
   document.getElementById('addNotes').value = '';
   document.getElementById('addModal').classList.add('active');
 }
-
-function closeAddModal() {
-  document.getElementById('addModal').classList.remove('active');
-  addCompanyId = null;
-}
-
+function closeAddModal() { document.getElementById('addModal').classList.remove('active'); addCompanyId = null; }
 async function saveAddContact() {
   const companyId = addCompanyId || document.getElementById('addCompany').value;
   const name = document.getElementById('addName').value.trim();
   const title = document.getElementById('addTitle').value.trim();
   const linkedin = document.getElementById('addLinkedIn').value.trim();
   const notes = document.getElementById('addNotes').value.trim();
-
-  if (!companyId) { showToast('Please select a company', 'error'); return; }
+  if (!companyId) { showToast('Select a company', 'error'); return; }
   if (!name) { showToast('Name is required', 'error'); return; }
   if (!title) { showToast('Title is required', 'error'); return; }
-
   try {
-    const r = await fetch(API_BASE+'/company/'+companyId+'/contact', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
-      body: JSON.stringify({full_name: name, title, linkedin_url: linkedin, notes})
-    });
+    const r = await fetch(API_BASE+'/company/'+companyId+'/contact', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({full_name:name,title,linkedin_url:linkedin,notes}) });
     const d = await r.json();
-    if (d.status === 'ok') {
-      showToast('Contact "'+name+'" added', 'success');
-      closeAddModal();
-      loadContacts();
-    } else {
-      showToast(d.detail || 'Failed to add contact', 'error');
-    }
-  } catch(e) {
-    showToast('Error: '+e.message, 'error');
-  }
+    if (d.status === 'ok') { showToast('Contact added', 'success'); closeAddModal(); loadContacts(); loadStats(); }
+    else showToast(d.detail || 'Failed to add', 'error');
+  } catch(e) { showToast('Error: '+e.message, 'error'); }
 }
 
-document.getElementById('addModal').addEventListener('click', function(e) {
-  if (e.target === this) closeAddModal();
-});
+document.getElementById('addModal').addEventListener('click', function(e) { if (e.target === this) closeAddModal(); });
+document.getElementById('editModal').addEventListener('click', function(e) { if (e.target === this) closeEditModal(); });
 
-document.getElementById('editModal').addEventListener('click', function(e) {
-  if (e.target === this) closeEditModal();
-});
-
-loadStats();
-loadDropdowns();
-loadContacts();
+loadStats(); loadDropdowns(); loadContacts();
 </script>
 </body>
 </html>

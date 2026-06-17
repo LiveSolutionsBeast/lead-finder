@@ -519,6 +519,20 @@ def soft_delete_contact(contact_id: int) -> bool:
     return affected > 0
 
 
+def bulk_soft_delete_contacts(contact_ids: list[int]) -> int:
+    """Soft-delete multiple contacts. Returns count of affected rows."""
+    if not contact_ids:
+        return 0
+    conn = get_db()
+    cur = conn.cursor()
+    placeholders = ",".join("?" * len(contact_ids))
+    cur.execute(f"UPDATE contacts SET is_deleted=1 WHERE id IN ({placeholders})", contact_ids)
+    conn.commit()
+    affected = cur.rowcount
+    conn.close()
+    return affected
+
+
 def patch_contact(contact_id: int, data: dict) -> bool:
     """
     Update specific fields on a contact.
