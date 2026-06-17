@@ -336,36 +336,50 @@ async function bulkDeleteLowConf() {
   loadAudit();
 }
 
+let patdiscPollTimer = null;
+
 async function bulkDiscoverPatterns() {
   const ids = Array.from(selections.noPat);
   if (!ids.length) return;
   if (!confirm('Discover email patterns for '+ids.length+' companies?')) return;
+  const info = document.getElementById('actionInfo');
+  info.textContent = 'Starting pattern discovery...';
   try {
     const r = await fetch(API_BASE+'/companies/bulk-discover-patterns', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids, quick:true})});
-    const d = await r.json();
-    if (d.job_id) {
-      // Poll for completion
-      const jobId = d.job_id;
-      const total = d.total;
-      let done = 0;
-      while (done < total) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        try {
-          const jr = await fetch(API_BASE+'/email/validate-job/'+jobId, {headers:{'X-LF-Key':API_KEY}});
-          const jd = await jr.json();
-          done = jd.done || 0;
-          const status = jd.status || 'running';
-          if (status === 'completed' || status === 'failed') {
-            const results = jd.results || {};
-            alert('Pattern discovery complete!\nPatterns found: '+results.patterns_found+'\nNo website: '+results.no_website+'\nNot found: '+results.not_found+'\nErrors: '+results.errors);
-            break;
-          }
-        } catch(e) { /* keep polling */ }
-      }
+    if (!r.ok) {
+      const d = await r.json().catch(()=>({}));
+      info.textContent = 'Error: ' + (d.detail || r.statusText);
+      return;
     }
-  } catch(e) { alert('Discover failed: '+e.message); }
-  clearSelection('noPat');
-  loadAudit();
+    const d = await r.json();
+    if (d.status === 'no_work') { info.textContent = 'No companies need patterns.'; return; }
+    const jobId = d.job_id;
+    info.textContent = 'Discovering patterns... (0/' + d.total + ')';
+    // Poll every 3 seconds using setInterval (non-blocking)
+    if (patdiscPollTimer) clearInterval(patdiscPollTimer);
+    patdiscPollTimer = setInterval(async () => {
+      try {
+        const jr = await fetch(API_BASE+'/email/validate-job/'+jobId, {headers:{'X-LF-Key':API_KEY}});
+        if (!jr.ok) return;
+        const jd = await jr.json();
+        const done = jd.done || 0;
+        const total = jd.total || d.total;
+        info.textContent = 'Discovering patterns... (' + done + '/' + total + ')';
+        if (jd.status === 'completed' || jd.status === 'failed') {
+          clearInterval(patdiscPollTimer);
+          patdiscPollTimer = null;
+          const results = jd.results || {};
+          if (jd.status === 'completed') {
+            info.textContent = 'Done: '+(results.patterns_found||0)+' patterns found, '+(results.not_found||0)+' not found, '+(results.errors||0)+' errors';
+          } else {
+            info.textContent = 'Pattern discovery failed after '+done+' companies';
+          }
+          clearSelection('noPat');
+          loadAudit();
+        }
+      } catch(e) { /* ignore poll errors */ }
+    }, 3000);
+  } catch(e) { info.textContent = 'Error: '+e.message; }
 }
 
 async function bulkDeleteNoPat() {
