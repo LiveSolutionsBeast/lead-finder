@@ -5,7 +5,7 @@ lf_db.py - Lead Finder Database Init & Helpers
 Creates the lf.db SQLite schema and provides CRUD helpers.
 """
 
-import sqlite3, json
+import sqlite3, json, uuid
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
@@ -603,6 +603,48 @@ def soft_delete_company(company_id: int) -> bool:
     affected = cur.rowcount
     conn.close()
     return affected > 0
+
+
+def bulk_soft_delete_companies(company_ids: list[int]) -> int:
+    """Soft-delete multiple companies. Returns count of affected rows."""
+    if not company_ids:
+        return 0
+    conn = get_db()
+    cur = conn.cursor()
+    placeholders = ",".join("?" * len(company_ids))
+    cur.execute(f"UPDATE companies SET is_deleted=1 WHERE id IN ({placeholders})", company_ids)
+    conn.commit()
+    affected = cur.rowcount
+    conn.close()
+    return affected
+
+
+def create_company_manual(data: dict) -> int:
+    """Create a company manually (no place_id required). Returns the new company ID."""
+    conn = get_db()
+    cur = conn.cursor()
+    now = datetime.now(timezone.utc).isoformat()
+    # Generate a manual place_id so it's unique
+    place_id = data.get("place_id") or f"manual-{uuid.uuid4().hex[:12]}"
+    cur.execute("""
+        INSERT INTO companies (place_id, name, street, city, state, postal_code, country,
+            lat, lng, business_type, website, phone, source, search_query, found_at,
+            confidence_score, data_provenance)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        place_id, data.get("name", ""),
+        data.get("street", ""), data.get("city", ""), data.get("state", ""),
+        data.get("postal_code", ""), data.get("country", "USA"),
+        data.get("lat"), data.get("lng"),
+        data.get("business_type", ""), data.get("website", ""),
+        data.get("phone", ""),
+        "MANUAL", data.get("search_query", ""), now,
+        1.0, "MANUAL_ENTRY"
+    ))
+    conn.commit()
+    company_id = cur.lastrowid
+    conn.close()
+    return company_id
 
 
 def undelete_company(company_id: int) -> bool:

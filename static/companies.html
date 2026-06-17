@@ -87,13 +87,19 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </div>
 
 <div class="card">
-<h2>Companies</h2>
+<h2 style="display:flex;align-items:center;justify-content:space-between;">Companies <button class="btn btn-green btn-sm" onclick="openAddCompanyModal()">+ Add Company</button></h2>
 <div class="filter-row">
 <label style="font-size:0.8rem;color:#94a3b8;">Industry: <select id="filterIndustry" onchange="loadCompanies()"><option value="">All Industries</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">City: <select id="filterCity" onchange="loadCompanies()"><option value="">All Cities</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">State: <select id="filterState"><option value="">All States</option><option value="CA">CA</option></select></label>
 <button class="btn" id="filterBtn">Filter</button>
 <label class="toggle-label"><input type="checkbox" id="showDeleted" /> Show Deleted</label>
+</div>
+<div id="bulkActions" style="display:none;align-items:center;gap:0.5rem;margin-bottom:0.5rem;padding:0.6rem 1rem;background:#1e293b;border-radius:6px;border:1px solid #334155;">
+<span style="color:#38bdf8;font-size:0.85rem;font-weight:600;" id="selectedCount">0 selected</span>
+<button class="btn btn-sm btn-green" onclick="bulkDiscover()">Bulk Discover</button>
+<button class="btn btn-sm btn-red" onclick="bulkDelete()">Bulk Delete</button>
+<button class="btn btn-sm btn-slate" onclick="clearSelection()">Clear Selection</button>
 </div>
 <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
 <label style="font-size:0.8rem;color:#94a3b8;">Per page: <select id="perPage" onchange="loadCompanies()">
@@ -103,7 +109,7 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </div>
 <div class="table-wrap">
 <table>
-<thead><tr><th class="sortable" data-sort-key="name">Name</th><th class="sortable" data-sort-key="city">City</th><th class="sortable" data-sort-key="state">State</th><th class="sortable" data-sort-key="business_type">Type</th><th>Website</th><th>Email Pattern</th><th class="sortable" data-sort-key="contact_count">Contacts</th><th>Actions</th></tr></thead>
+<thead><tr><th style="width:30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()" /></th><th class="sortable" data-sort-key="name">Name</th><th class="sortable" data-sort-key="city">City</th><th class="sortable" data-sort-key="state">State</th><th class="sortable" data-sort-key="business_type">Type</th><th>Website</th><th>Email Pattern</th><th class="sortable" data-sort-key="contact_count">Contacts</th><th>Actions</th></tr></thead>
 <tbody id="companiesTable"></tbody>
 </table>
 </div>
@@ -138,6 +144,74 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </div>
 </div>
 
+<!-- Add Company Modal -->
+<div class="modal-overlay" id="addCompanyModal">
+<div class="modal">
+<h3>Add Company Manually</h3>
+<div class="modal-row">
+<label>Company Name *</label>
+<input id="addCompanyName" type="text" placeholder="Acme Corp" />
+</div>
+<div class="modal-row">
+<label>Website</label>
+<input id="addCompanyWebsite" type="text" placeholder="https://acme.com" />
+</div>
+<div class="modal-row" style="display:grid;grid-template-columns:1fr 80px;gap:0.75rem;">
+<div>
+<label>City</label>
+<input id="addCompanyCity" type="text" placeholder="Los Angeles" />
+</div>
+<div>
+<label>State</label>
+<input id="addCompanyState" type="text" placeholder="CA" maxlength="2" />
+</div>
+</div>
+<div class="modal-row">
+<label>Street Address</label>
+<input id="addCompanyStreet" type="text" placeholder="123 Main St" />
+</div>
+<div class="modal-row" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+<div>
+<label>Business Type</label>
+<select id="addCompanyType">
+<option value="">Select...</option>
+<option value="manufacturer">Manufacturer</option>
+<option value="supplier">Supplier</option>
+<option value="wholesaler">Wholesaler</option>
+<option value="service">Service</option>
+<option value="general_contractor">General Contractor</option>
+<option value="consultant">Consultant</option>
+<option value="transportation_service">Transportation Service</option>
+<option value="car_dealer">Car Dealer</option>
+<option value="boat_repair">Boat Repair</option>
+<option value="marina">Marina</option>
+<option value="medical_clinic">Medical Clinic</option>
+<option value="medical_lab">Medical Lab</option>
+<option value="health">Health</option>
+<option value="doctor">Doctor</option>
+<option value="lawyer">Lawyer</option>
+<option value="store">Store</option>
+<option value="furniture_store">Furniture Store</option>
+<option value="cosmetics_store">Cosmetics Store</option>
+<option value="moving_company">Moving Company</option>
+<option value="storage">Storage</option>
+<option value="sports_school">Sports School</option>
+<option value="point_of_interest">Point of Interest</option>
+<option value="local_government_office">Government Office</option>
+</select>
+</div>
+<div>
+<label>Phone</label>
+<input id="addCompanyPhone" type="text" placeholder="(555) 123-4567" />
+</div>
+</div>
+<div class="modal-actions">
+<button class="btn btn-orange btn-sm" onclick="closeAddCompanyModal()">Cancel</button>
+<button class="btn btn-green btn-sm" onclick="submitAddCompany()">Add &amp; Discover</button>
+</div>
+</div>
+</div>
+
 <script>
 const API_BASE = '/api';
 const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
@@ -148,6 +222,8 @@ let currentPatternCompanyId = null;
 let currentPatternCompany = null;
 // Sort state (added 2026-06-16)
 let currentSort = { key: 'name', dir: 'asc' };
+// Bulk selection state
+let selectedCompanyIds = new Set();
 
 // Generic comparator for companies table
 function _compareValues(a, b, dir) {
@@ -231,6 +307,18 @@ function extractDomain(url) {
   }
 }
 
+// Format business_type: underscores → spaces, title-case
+function formatBusinessType(c) {
+  // Use canonical_business_type if available and non-empty
+  if (c.canonical_business_type && c.canonical_business_type.trim()) {
+    return c.canonical_business_type.trim();
+  }
+  const raw = (c.business_type || '').trim();
+  if (!raw) return '';
+  // Replace underscores with spaces, then title-case each word
+  return raw.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+}
+
 async function loadStats() {
   try {
     const r = await fetch(API_BASE+'/stats', {headers: {'X-LF-Key': API_KEY}});
@@ -249,7 +337,7 @@ async function loadCompanyDropdowns() {
     const d = await r.json();
     const indSel = document.getElementById('filterIndustry');
     indSel.innerHTML = '<option value="">All Industries</option>' +
-      (d.industries||[]).map(v => '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>').join('');
+      (d.industries||[]).map(v => '<option value="'+escapeHtml(v)+'">'+escapeHtml(v.replace(/_/g,' '))+'</option>').join('');
     const citySel = document.getElementById('filterCity');
     citySel.innerHTML = '<option value="">All Cities</option>' +
       (d.cities||[]).map(v => '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>').join('');
@@ -264,6 +352,19 @@ function renderRow(c) {
   tr.dataset.companyId = c.id;
   tr.dataset.companyJson = JSON.stringify(c);
   if (c.is_deleted) tr.classList.add('deleted-row');
+
+  // Checkbox cell
+  const checkTd = document.createElement('td');
+  checkTd.style.width = '30px';
+  checkTd.style.textAlign = 'center';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'company-cb';
+  cb.dataset.companyId = c.id;
+  cb.checked = selectedCompanyIds.has(c.id);
+  cb.addEventListener('change', () => toggleCompanySelection(c.id, cb.checked));
+  checkTd.appendChild(cb);
+  tr.appendChild(checkTd);
 
   // Pattern cell
   const patternCell = document.createElement('td');
@@ -359,7 +460,7 @@ function renderRow(c) {
     '<td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(c.name) + '">' + escapeHtml(c.name) + '</td>' +
     '<td style="white-space:nowrap;">' + escapeHtml(c.city || '') + '</td>' +
     '<td style="white-space:nowrap;">' + escapeHtml(c.state || '') + '</td>' +
-    '<td style="white-space:nowrap;">' + escapeHtml(c.business_type || '') + '</td>' +
+    '<td style="white-space:nowrap;">' + escapeHtml(formatBusinessType(c)) + '</td>' +
     '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (c.website ? '<a href="' + escapeHtml(c.website) + '" target="_blank" title="' + escapeHtml(c.website) + '" style="color:#38bdf8;">' + escapeHtml(extractDomain(c.website)) + '</a>' : '<span style="color:#ef4444;font-size:0.7rem;">missing</span>') + '</td>';
   tr.appendChild(patternCell);
   tr.innerHTML += '<td style="text-align:center;white-space:nowrap;">' + (c.contact_count || 0) + '</td>';
@@ -372,7 +473,7 @@ function renderCompanies(companies) {
   const tbody = document.getElementById('companiesTable');
   tbody.innerHTML = '';
   if (!companies || companies.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:2rem;">No companies found. Try adjusting your filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:2rem;">No companies found. Try adjusting your filters.</td></tr>';
     return;
   }
   companies.forEach(c => {
@@ -400,7 +501,7 @@ async function loadCompanies() {
     companiesData = data.companies || [];
     if (companiesData.length === 0) {
       const tbody = document.getElementById('companiesTable');
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:2rem;">No companies found. Try adjusting your filters.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:2rem;">No companies found. Try adjusting your filters.</td></tr>';
       return;
     }
     // Re-render with the current sort applied
@@ -408,6 +509,140 @@ async function loadCompanies() {
   } catch(e) {
     console.error('loadCompanies error:', e);
     showToast('Failed to load companies: ' + e.message, 'error');
+  }
+}
+
+// Bulk selection management
+function toggleCompanySelection(id, checked) {
+  if (checked) {
+    selectedCompanyIds.add(id);
+  } else {
+    selectedCompanyIds.delete(id);
+  }
+  updateBulkUI();
+}
+
+function toggleSelectAll() {
+  const checked = document.getElementById('selectAll').checked;
+  selectedCompanyIds.clear();
+  if (checked) {
+    companiesData.forEach(c => selectedCompanyIds.add(c.id));
+  }
+  // Update all visible checkboxes
+  document.querySelectorAll('.company-cb').forEach(cb => {
+    cb.checked = checked;
+  });
+  updateBulkUI();
+}
+
+function clearSelection() {
+  selectedCompanyIds.clear();
+  document.getElementById('selectAll').checked = false;
+  document.querySelectorAll('.company-cb').forEach(cb => cb.checked = false);
+  updateBulkUI();
+}
+
+function updateBulkUI() {
+  const bar = document.getElementById('bulkActions');
+  const count = selectedCompanyIds.size;
+  document.getElementById('selectedCount').textContent = count + ' selected';
+  bar.style.display = count > 0 ? 'flex' : 'none';
+}
+
+async function bulkDelete() {
+  const ids = Array.from(selectedCompanyIds);
+  if (ids.length === 0) return;
+  if (!confirm('Soft-delete ' + ids.length + ' companies?\n\nThey can be restored later from the Companies page.')) return;
+  try {
+    const r = await fetch(API_BASE + '/companies/bulk-delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+      body: JSON.stringify({ids})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      showToast(d.message, 'success');
+      clearSelection();
+      loadCompanies();
+      loadStats();
+    } else {
+      showToast('Bulk delete failed: ' + (d.detail || 'unknown'), 'error');
+    }
+  } catch(e) {
+    showToast('Bulk delete error: ' + e.message, 'error');
+  }
+}
+
+async function bulkDiscover() {
+  const ids = Array.from(selectedCompanyIds);
+  if (ids.length === 0) return;
+  if (!confirm('Run executive discovery for ' + ids.length + ' companies?\n\nThis may take a few minutes.')) return;
+  showToast('Discovering executives for ' + ids.length + ' companies...', 'success');
+  try {
+    const r = await fetch(API_BASE + '/companies/bulk-discover', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+      body: JSON.stringify({ids})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      showToast(d.message, 'success');
+      clearSelection();
+      loadCompanies();
+    } else {
+      showToast('Bulk discover failed: ' + (d.detail || 'unknown'), 'error');
+    }
+  } catch(e) {
+    showToast('Bulk discover error: ' + e.message, 'error');
+  }
+}
+
+// Add Company modal
+function openAddCompanyModal() {
+  document.getElementById('addCompanyModal').classList.add('active');
+  document.getElementById('addCompanyName').value = '';
+  document.getElementById('addCompanyWebsite').value = '';
+  document.getElementById('addCompanyCity').value = '';
+  document.getElementById('addCompanyState').value = 'CA';
+  document.getElementById('addCompanyStreet').value = '';
+  document.getElementById('addCompanyType').value = '';
+  document.getElementById('addCompanyPhone').value = '';
+  document.getElementById('addCompanyName').focus();
+}
+
+function closeAddCompanyModal() {
+  document.getElementById('addCompanyModal').classList.remove('active');
+}
+
+async function submitAddCompany() {
+  const name = document.getElementById('addCompanyName').value.trim();
+  if (!name) { showToast('Company name is required', 'error'); return; }
+  const data = {
+    name,
+    website: document.getElementById('addCompanyWebsite').value.trim(),
+    city: document.getElementById('addCompanyCity').value.trim(),
+    state: document.getElementById('addCompanyState').value.trim(),
+    street: document.getElementById('addCompanyStreet').value.trim(),
+    business_type: document.getElementById('addCompanyType').value,
+    phone: document.getElementById('addCompanyPhone').value.trim(),
+  };
+  try {
+    const r = await fetch(API_BASE + '/companies', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+      body: JSON.stringify(data)
+    });
+    const d = await r.json();
+    if (r.ok) {
+      showToast(name + ' created! (id=' + d.company_id + ')', 'success');
+      closeAddCompanyModal();
+      loadCompanies();
+      loadStats();
+    } else {
+      showToast('Create failed: ' + (d.detail || 'unknown'), 'error');
+    }
+  } catch(e) {
+    showToast('Create error: ' + e.message, 'error');
   }
 }
 

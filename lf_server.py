@@ -44,7 +44,8 @@ from lf_db import (
     get_db, get_all_sessions, get_session, get_session_companies,
     get_session_contacts, upsert_contact, upsert_company,
     soft_delete_contact, patch_contact, resume_session, delete_session,
-    get_companies_for_session,
+    get_companies_for_session, bulk_soft_delete_companies,
+    create_company_manual,
     init_db,  # added 2026-06-07: ensure schema is up-to-date on startup
 )
 from lf_search import search_companies as google_search, enrich_company_details
@@ -430,6 +431,111 @@ async def api_session_delete(
         "status": "ok",
         "message": f"Session {session_key} deleted",
         **result,
+    }
+
+
+@app.post("/api/companies")
+async def api_create_company(
+    body: dict,
+    _: str = Header(None, alias="X-LF-Key"),
+):
+    """Create a company manually. Auto-discovers executives after creation."""
+    verify_key(_)
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Company name is required")
+    company_id = create_company_manual(body)
+    return {
+        "status": "ok",
+        "message": f"Company '{name}' created (id={company_id})",
+        "company_id": company_id,
+    }
+
+
+@app.post("/api/companies/bulk-delete")
+async def api_bulk_delete_companies(
+    body: dict,
+    _: str = Header(None, alias="X-LF-Key"),
+):
+    """Soft-delete multiple companies by ID list."""
+    verify_key(_)
+    ids = body.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=400, detail="No company IDs provided")
+    # Convert to ints safely
+    try:
+        int_ids = [int(i) for i in ids]
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid company ID format")
+    affected = bulk_soft_delete_companies(int_ids)
+    return {
+        "status": "ok",
+        "message": f"Deleted {affected} companies",
+        "deleted_count": affected,
+    }
+
+
+@app.post("/api/companies/bulk-discover")
+async def api_bulk_discover_executives(
+    body: dict,
+    _: str = Header(None, alias="X-LF-Key"),
+):
+    """Run executive discovery for multiple companies concurrently."""
+    verify_key(_)
+    ids = body.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=400, detail="No company IDs provided")
+    try:
+        int_ids = [int(i) for i in ids]
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid company ID format")
+
+    import concurrent.futures
+    from lf_executives import discover_executives_ai_first
+
+    # Fetch all companies
+    conn = get_db()
+    cur = conn.cursor()
+    placeholders = ",".join("?" * len(int_ids))
+    rows = cur.execute(f"SELECT * FROM companies WHERE id IN ({placeholders})", int_ids).fetchall()
+    conn.close()
+
+    results = {"found": 0, "errors": 0, "details": []}
+
+    def _discover_one(company):
+        try:
+            search_lat = float(company.get("lat", 0.0) or 0.0)
+            search_lng = float(company.get("lng", 0.0) or 0.0)
+            discover_executives_ai_first(
+                company_name=company.get("name", ""),
+                company_id=company["id"],
+                website=company.get("website", ""),
+                linkedin_url="",
+                industry=company.get("search_query") or company.get("business_type", ""),
+                search_city=company.get("city", ""),
+                search_state=company.get("state", "CA"),
+                search_lat=search_lat,
+                search_lng=search_lng,
+                radius_miles=25,
+            )
+            return (company["id"], company.get("name", ""), True, 0)
+        except Exception as e:
+            return (company["id"], company.get("name", ""), False, str(e))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+        futures = {ex.submit(_discover_one, dict(r)): r for r in rows}
+        for f in concurrent.futures.as_completed(futures):
+            cid, name, ok, err = f.result()
+            if ok:
+                results["found"] += 1
+            else:
+                results["errors"] += 1
+                results["details"].append({"id": cid, "name": name, "error": err})
+
+    return {
+        "status": "ok",
+        "message": f"Discovered executives for {results['found']}/{len(int_ids)} companies ({results['errors']} errors)",
+        **results,
     }
 
 
