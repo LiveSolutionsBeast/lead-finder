@@ -35,7 +35,7 @@ th{text-align:left;padding:0.5rem 0.6rem;background:#0f172a;color:#64748b;font-w
 td{padding:0.5rem 0.6rem;border-bottom:1px solid #1e293b;overflow:hidden;text-overflow:ellipsis}
 tr:hover td{background:#1e293b}
 /* Column widths — 13 columns total (checkbox + 12 data) */
-th:nth-child(1),td:nth-child(1){width:30px;text-align:center}
+th:nth-child(1),td:nth-child(1){width:30px;text-align:center;overflow:visible}
 th:nth-child(2),td:nth-child(2){width:13%} /* Name */
 th:nth-child(3),td:nth-child(3){width:13%} /* Title */
 th:nth-child(4),td:nth-child(4){width:12%} /* Company */
@@ -78,7 +78,7 @@ th:nth-child(12),td:nth-child(12){width:14%;overflow:visible} /* Actions */
 .bulk-bar.active{display:flex}
 .bulk-count{color:#38bdf8;font-size:0.85rem;font-weight:600}
 /* Checkboxes — same as companies page */
-input[type="checkbox"]{accent-color:#38bdf8;width:16px;height:16px;cursor:pointer}
+input[type="checkbox"]{accent-color:#38bdf8;width:16px;height:16px;cursor:pointer;padding:0;background:transparent;border:none;min-width:0}
 /* Sortable column headers */
 th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:1.1rem;transition:background 0.15s}
 th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
