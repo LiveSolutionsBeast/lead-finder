@@ -701,7 +701,10 @@ def resume_session(session_key: str) -> bool:
 
 
 def delete_session(session_key: str) -> dict:
-    """Permanently delete a session and its search_results.
+    """Permanently delete a session and ALL its related data.
+
+    Hard-deletes: search_sessions, search_results, discovery_jobs,
+    and discovery_job_items for this session_key.
 
     Companies and contacts are NOT deleted — they may belong to other
     sessions (joined via industry = search_query).
@@ -721,6 +724,18 @@ def delete_session(session_key: str) -> dict:
 
     session_id = row["id"]
 
+    # Delete discovery_job_items for jobs belonging to this session
+    cur.execute("""
+        DELETE FROM discovery_job_items WHERE job_id IN (
+            SELECT job_id FROM discovery_jobs WHERE session_key=?
+        )
+    """, (session_key,))
+    job_items_deleted = cur.rowcount
+
+    # Delete discovery_jobs for this session
+    cur.execute("DELETE FROM discovery_jobs WHERE session_key=?", (session_key,))
+    jobs_deleted = cur.rowcount
+
     # Delete search_results referencing this session
     cur.execute("DELETE FROM search_results WHERE session_id=?", (session_id,))
     results_deleted = cur.rowcount
@@ -736,6 +751,8 @@ def delete_session(session_key: str) -> dict:
         "deleted": session_deleted > 0,
         "session_rows": session_deleted,
         "result_rows": results_deleted,
+        "discovery_jobs": jobs_deleted,
+        "discovery_job_items": job_items_deleted,
     }
 
 
