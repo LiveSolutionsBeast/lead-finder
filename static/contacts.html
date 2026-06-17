@@ -523,6 +523,24 @@ function showToast(msg, type) {
 // ── Add Contact Modal ─────────────────────────────────────────────────────────
 let addCompanyId = null;
 
+async function openAddContact() {
+  addCompanyId = null;
+  const sel = document.getElementById('addCompany');
+  // Always refresh/populate the full company list
+  const r = await fetch(API_BASE+'/companies?limit=500', {headers: {'X-LF-Key': API_KEY}});
+  const d = await r.json();
+  sel.innerHTML = '<option value="">— Select Company —</option>';
+  for (const c of (d.companies||[])) {
+    sel.innerHTML += '<option value="'+c.id+'">'+escapeHtml(c.name)+' ('+escapeHtml(c.city||'')+', '+escapeHtml(c.state||'')+')</option>';
+  }
+  sel.value = '';
+  document.getElementById('addName').value = '';
+  document.getElementById('addTitle').value = '';
+  document.getElementById('addLinkedIn').value = '';
+  document.getElementById('addNotes').value = '';
+  document.getElementById('addModal').classList.add('active');
+}
+
 async function openAddContactForCompany(companyId, companyName) {
   addCompanyId = companyId;
   const sel = document.getElementById('addCompany');
