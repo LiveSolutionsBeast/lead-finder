@@ -77,6 +77,8 @@ th:nth-child(12),td:nth-child(12){width:14%;overflow:visible} /* Actions */
 .bulk-bar{display:none;align-items:center;gap:0.5rem;margin-bottom:0.5rem;padding:0.6rem 1rem;background:#1e293b;border-radius:6px;border:1px solid #334155}
 .bulk-bar.active{display:flex}
 .bulk-count{color:#38bdf8;font-size:0.85rem;font-weight:600}
+/* Checkboxes — same as companies page */
+input[type="checkbox"]{accent-color:#38bdf8;width:16px;height:16px;cursor:pointer}
 /* Sortable column headers */
 th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:1.1rem;transition:background 0.15s}
 th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
@@ -338,7 +340,7 @@ function renderContacts(contacts, perPage, groupBy) {
       if (count === 1 || (groupBy === 'company' && ct === group[0])) {
         const hr = document.createElement('tr');
         hr.className = 'company-group-header';
-        hr.innerHTML = '<td colspan="1">&#9654;</td><td colspan="11" style="overflow:visible;">' + escapeHtml(companyName) + ' (' + group.length + ')</td><td style="overflow:visible;"><button class="btn-sm btn-green" onclick="openAddContactForCompany('+companyId+'," title="Add contact to '+escapeHtml(companyName)+'">+ Add</button></td>';
+        hr.innerHTML = '<td colspan="1">&#9654;</td><td colspan="11" style="overflow:visible;">' + escapeHtml(companyName) + ' (' + group.length + ')</td><td style="overflow:visible;"><button class="btn-sm btn-green" onclick="openAddContactForCompany('+companyId+',\''+escapeHtml(companyName).replace(/'/g,"\\'")+'\')" title="Add contact to '+escapeHtml(companyName)+'">+ Add</button></td>';
         tbody.appendChild(hr);
       }
 
