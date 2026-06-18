@@ -402,7 +402,7 @@ function renderRow(c) {
   if (c.is_deleted) {
     // is_deleted no longer used — all deletes are permanent
   } else {
-    actionsHtml += '<button class="btn btn-sm btn-red" data-action="delete-company" title="Soft-delete this company">&#10005;</button>';
+    actionsHtml += '<button class="btn btn-sm btn-red" data-action="delete-company" title="Permanently delete this company">&#10005;</button>';
   }
 
   // Build full row as a single innerHTML (avoids DOM/innerHTML mixing)

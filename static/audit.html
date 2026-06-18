@@ -240,7 +240,7 @@ function extractDomain(url) {
 function contactActions(ct, bucket) {
   let html = '<div class="action-group">';
   html += '<button class="btn-sm btn-green" title="Edit on Contacts page" onclick="window.open(\'/finder/contacts\',\'_blank\')">&#9998;</button>';
-  html += '<button class="btn-sm btn-red" title="Soft-delete contact" onclick="deleteContactFromAudit('+ct.id+',\''+escapeHtml(ct.full_name).replace(/'/g,"\\'")+'\')">&#10005;</button>';
+  html += '<button class="btn-sm btn-red" title="Permanently delete contact" onclick="deleteContactFromAudit('+ct.id+',\''+escapeHtml(ct.full_name).replace(/'/g,"\\'")+'\')">&#10005;</button>';
   html += '<button class="btn-sm btn-purple" title="AI-verify title" onclick="verifySingleTitle('+ct.id+')">&#9733;</button>';
   html += '</div>';
   return html;
@@ -250,7 +250,7 @@ function contactActions(ct, bucket) {
 function companyActions(c, bucket) {
   let html = '<div class="action-group">';
   html += '<button class="btn-sm btn-green" title="Edit on Companies page" onclick="window.open(\'/finder/companies\',\'_blank\')">&#9998;</button>';
-  html += '<button class="btn-sm btn-red" title="Soft-delete company" onclick="deleteCompanyFromAudit('+c.id+',\''+escapeHtml(c.name).replace(/'/g,"\\'")+'\')">&#10005;</button>';
+  html += '<button class="btn-sm btn-red" title="Permanently delete company" onclick="deleteCompanyFromAudit('+c.id+',\''+escapeHtml(c.name).replace(/'/g,"\\'")+'\')">&#10005;</button>';
   if (bucket === 'noPat' && !c.email_pattern) {
     html += '<button class="btn-sm btn-blue" title="Discover email pattern" onclick="discoverPattern('+c.id+')">&#9993;</button>';
   }
@@ -263,13 +263,13 @@ function companyActions(c, bucket) {
 
 // ── Single item actions ──
 async function deleteContactFromAudit(id, name) {
-  if (!confirm('Soft-delete "'+name+'"?')) return;
+  if (!confirm('Permanently delete contact "'+name+'"?')) return;
   const r = await fetch(API_BASE+'/contact/'+id, {method:'DELETE', headers:{'X-LF-Key':API_KEY}});
   if (r.ok) { loadAudit(); } else { alert('Delete failed'); }
 }
 
 async function deleteCompanyFromAudit(id, name) {
-  if (!confirm('Soft-delete "'+name+'"?')) return;
+  if (!confirm('Permanently delete company "'+name+'"?')) return;
   const r = await fetch(API_BASE+'/company/'+id, {method:'DELETE', headers:{'X-LF-Key':API_KEY}});
   if (r.ok) { loadAudit(); } else { alert('Delete failed'); }
 }

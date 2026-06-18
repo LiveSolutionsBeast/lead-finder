@@ -129,7 +129,7 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </div>
 <div class="bulk-bar" id="bulkBar">
 <span class="bulk-count" id="bulkCount">0 selected</span>
-<button class="btn btn-sm btn-red" onclick="bulkDelete()" title="Soft-delete selected contacts">&#10005; Delete</button>
+<button class="btn btn-sm btn-red" onclick="bulkDelete()" title="Permanently delete selected contacts">&#10005; Delete</button>
 <button class="btn btn-sm btn-purple" onclick="bulkValidate()" title="SMTP-validate emails for selected contacts">&#9889; Validate Emails</button>
 <button class="btn btn-sm btn-slate" onclick="clearSelection()" title="Deselect all">Clear</button>
 </div>
@@ -386,7 +386,7 @@ function renderContacts(contacts, perPage, groupBy) {
       // Action buttons — compact icons with tooltips, no spaces between
       let actions = '';
       actions += '<button class="btn-sm btn-green" onclick="openEdit('+ct.id+')" title="Edit contact">&#9998;</button>';
-      actions += '<button class="btn-sm btn-red" onclick="deleteContact('+ct.id+')" title="Soft-delete contact">&#10005;</button>';
+      actions += '<button class="btn-sm btn-red" onclick="deleteContact('+ct.id+')" title="Permanently delete contact">&#10005;</button>';
       actions += '<button class="btn-sm btn-orange" onclick="exportContact('+ct.id+')" title="Export as CSV">&#8681;</button>';
       if (!ct.email && ct.company_email_pattern) {
         actions += '<button class="btn-sm btn-blue" onclick="deriveEmail('+ct.id+')" title="Derive email from pattern">&#9993;</button>';
@@ -448,7 +448,7 @@ async function verifyTitle(contactId) {
 async function deleteContact(id) {
   const ct = allContacts.find(c => c.id === id);
   const name = ct ? ct.full_name : 'this contact';
-  if (!confirm('Soft-delete "'+name+'"?')) return;
+  if (!confirm('Permanently delete "'+name+'"?')) return;
   const r = await fetch(API_BASE+'/contact/'+id, { method:'DELETE', headers:{'X-LF-Key':API_KEY} });
   if (r.ok) { showToast('Contact deleted', 'success'); loadContacts(); loadStats(); }
   else showToast('Failed to delete', 'error');
