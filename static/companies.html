@@ -362,6 +362,7 @@ function renderRow(c) {
   tr.dataset.companyId = c.id;
   tr.dataset.companyJson = JSON.stringify(c);
   if (c.is_deleted) tr.classList.add('deleted-row');
+  // Note: is_deleted is no longer used — all deletes are permanent now
 
   // Checkbox
   const cbChecked = selectedCompanyIds.has(c.id) ? ' checked' : '';
@@ -399,7 +400,7 @@ function renderRow(c) {
     + '<button class="btn btn-sm btn-amber" data-action="export-patterns" title="Export email patterns">&#8681;</button>';
 
   if (c.is_deleted) {
-    actionsHtml += '<button class="btn btn-sm btn-green" data-action="undelete-company" title="Restore deleted company">&#9851;</button>';
+    // is_deleted no longer used — all deletes are permanent
   } else {
     actionsHtml += '<button class="btn btn-sm btn-red" data-action="delete-company" title="Soft-delete this company">&#10005;</button>';
   }
@@ -506,7 +507,7 @@ function updateBulkUI() {
 async function bulkDelete() {
   const ids = Array.from(selectedCompanyIds);
   if (ids.length === 0) return;
-  if (!confirm('Soft-delete ' + ids.length + ' companies?\n\nThey can be restored later from the Companies page.')) return;
+  if (!confirm('Permanently delete ' + ids.length + ' companies?\n\nThis cannot be undone. All contacts will also be deleted.')) return;
   try {
     const r = await fetch(API_BASE + '/companies/bulk-delete', {
       method: 'POST',
@@ -720,7 +721,7 @@ document.getElementById('companiesTable').addEventListener('click', async functi
       break;
     }
     case 'delete-company': {
-      if (!confirm('Soft-delete "' + company.name + '"?\n\nIt will be hidden from this list but can be restored.')) return;
+      if (!confirm('Permanently delete "' + company.name + '"?\n\nThis cannot be undone. All contacts will also be deleted.')) return;
       try {
         const r = await fetch(API_BASE + '/company/' + company.id, {
           method: 'DELETE',
@@ -738,28 +739,6 @@ document.getElementById('companiesTable').addEventListener('click', async functi
         }
       } catch(e) {
         showToast('Delete error: ' + e.message, 'error');
-      }
-      break;
-    }
-    case 'undelete-company': {
-      if (!confirm('Restore "' + company.name + '"?\n\nIt will reappear in the companies list.')) return;
-      try {
-        const r = await fetch(API_BASE + '/company/' + company.id + '/undelete', {
-          method: 'POST',
-          headers: {'X-LF-Key': API_KEY}
-        });
-        if (r.ok) {
-          showToast(company.name + ' restored', 'success');
-          // Immediate row removal + reload
-          tr.style.transition = 'opacity 0.3s';
-          tr.style.opacity = '0';
-          setTimeout(() => { tr.remove(); loadCompanies(); }, 350);
-        } else {
-          const d = await r.json();
-          showToast('Restore failed: ' + (d.detail || 'unknown'), 'error');
-        }
-      } catch(e) {
-        showToast('Restore error: ' + e.message, 'error');
       }
       break;
     }

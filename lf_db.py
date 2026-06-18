@@ -317,7 +317,7 @@ def upsert_contact(company_id: int, data: dict) -> int:
     # Check for existing contact by LinkedIn URL first (strongest signal)
     if linkedin_url:
         existing = cur.execute(
-            "SELECT id FROM contacts WHERE company_id=? AND linkedin_url=? AND is_deleted=0",
+            "SELECT id FROM contacts WHERE company_id=? AND linkedin_url=?",
             (company_id, linkedin_url)
         ).fetchone()
         if existing:
@@ -354,7 +354,7 @@ def upsert_contact(company_id: int, data: dict) -> int:
 
     # Check by full_name within company (second signal)
     existing = cur.execute(
-        "SELECT id FROM contacts WHERE company_id=? AND full_name=? AND is_deleted=0",
+        "SELECT id FROM contacts WHERE company_id=? AND full_name=?",
         (company_id, full_name)
     ).fetchone()
     if existing:
@@ -393,18 +393,18 @@ def upsert_contact(company_id: int, data: dict) -> int:
         INSERT INTO contacts (company_id, first_name, last_name, full_name, title,
             linkedin_url, email_pattern_note, is_local, hq_contact,
             confidence_score, data_provenance, found_at,
-            is_manually_edited, is_deleted, manual_notes,
+            is_manually_edited, manual_notes,
             source_primary, source_linkedin_verified, source_linkedin_unverified,
             title_from_website, title_from_linkedin, linkedin_snippet,
             ai_verified_title, ai_title_confidence, ai_title_source)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         company_id, first_name, last_name, full_name,
         data.get("title"), linkedin_url,
         data.get("email_pattern_note"), data.get("is_local", 1),
         data.get("hq_contact", 0), data.get("confidence_score", 1.0),
         data.get("data_provenance"), now,
-        data.get("is_manually_edited", 0), 0,
+        data.get("is_manually_edited", 0),
         data.get("manual_notes", ""),
         data.get("source_primary", ""),
         data.get("source_linkedin_verified", 0),
@@ -467,7 +467,6 @@ def get_session_companies(session_key: str):
         JOIN search_sessions s ON s.industry = c.search_query
         LEFT JOIN contacts ct
             ON ct.company_id = c.id
-            AND (ct.is_deleted IS NULL OR ct.is_deleted = 0)
         WHERE s.session_key=?
         GROUP BY c.id
         ORDER BY c.id
@@ -508,25 +507,25 @@ def get_geocode(city: str, state: str = "CA"):
     return dict(row) if row else None
 
 
-def soft_delete_contact(contact_id: int) -> bool:
-    """Soft-delete a contact (mark is_deleted=1). Returns True if found."""
+def delete_contact(contact_id: int) -> bool:
+    """Permanently delete a contact. Returns True if found."""
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("UPDATE contacts SET is_deleted=1 WHERE id=?", (contact_id,))
+    cur.execute("DELETE FROM contacts WHERE id=?", (contact_id,))
     conn.commit()
     affected = cur.rowcount
     conn.close()
     return affected > 0
 
 
-def bulk_soft_delete_contacts(contact_ids: list[int]) -> int:
-    """Soft-delete multiple contacts. Returns count of affected rows."""
+def bulk_delete_contacts(contact_ids: list[int]) -> int:
+    """Permanently delete multiple contacts. Returns count of affected rows."""
     if not contact_ids:
         return 0
     conn = get_db()
     cur = conn.cursor()
     placeholders = ",".join("?" * len(contact_ids))
-    cur.execute(f"UPDATE contacts SET is_deleted=1 WHERE id IN ({placeholders})", contact_ids)
+    cur.execute(f"DELETE FROM contacts WHERE id IN ({placeholders})", contact_ids)
     conn.commit()
     affected = cur.rowcount
     conn.close()
@@ -573,7 +572,6 @@ def patch_company(company_id: int, data: dict) -> bool:
     """
     Update specific fields on a company. Returns True if found and updated.
     Extended 2026-06-07 (QC-14) to also accept:
-      - is_deleted: 0/1 (soft delete)
       - is_manually_edited: 0/1
       - manual_notes: text
       - canonical_business_type: text (AI-categorized)
@@ -583,7 +581,7 @@ def patch_company(company_id: int, data: dict) -> bool:
     """
     allowed = {
         "email_pattern", "email_pattern_confidence", "email_pattern_source", "website",
-        "is_deleted", "is_manually_edited", "manual_notes",
+        "is_manually_edited", "manual_notes",
         "canonical_business_type", "business_type_confidence",
         "ai_sanity_status", "ai_sanity_notes",
     }
@@ -605,28 +603,32 @@ def patch_company(company_id: int, data: dict) -> bool:
     return affected > 0
 
 
-def soft_delete_company(company_id: int) -> bool:
+def delete_company(company_id: int) -> bool:
     """
-    Soft-delete a company (mark is_deleted=1). Returns True if found.
-    Reversible: set is_deleted=0 to re-activate.
+    Permanently delete a company and all its contacts.
+    Also cleans up discovery_job_items for this company.
     """
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("UPDATE companies SET is_deleted=1 WHERE id=?", (company_id,))
+    cur.execute("DELETE FROM contacts WHERE company_id=?", (company_id,))
+    cur.execute("DELETE FROM discovery_job_items WHERE company_id=?", (company_id,))
+    cur.execute("DELETE FROM companies WHERE id=?", (company_id,))
     conn.commit()
     affected = cur.rowcount
     conn.close()
     return affected > 0
 
 
-def bulk_soft_delete_companies(company_ids: list[int]) -> int:
-    """Soft-delete multiple companies. Returns count of affected rows."""
+def bulk_delete_companies(company_ids: list[int]) -> int:
+    """Permanently delete multiple companies and their contacts."""
     if not company_ids:
         return 0
     conn = get_db()
     cur = conn.cursor()
     placeholders = ",".join("?" * len(company_ids))
-    cur.execute(f"UPDATE companies SET is_deleted=1 WHERE id IN ({placeholders})", company_ids)
+    cur.execute(f"DELETE FROM contacts WHERE company_id IN ({placeholders})", company_ids)
+    cur.execute(f"DELETE FROM discovery_job_items WHERE company_id IN ({placeholders})", company_ids)
+    cur.execute(f"DELETE FROM companies WHERE id IN ({placeholders})", company_ids)
     conn.commit()
     affected = cur.rowcount
     conn.close()
@@ -659,17 +661,6 @@ def create_company_manual(data: dict) -> int:
     company_id = cur.lastrowid
     conn.close()
     return company_id
-
-
-def undelete_company(company_id: int) -> bool:
-    """Re-activate a soft-deleted company (set is_deleted=0)."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("UPDATE companies SET is_deleted=0 WHERE id=?", (company_id,))
-    conn.commit()
-    affected = cur.rowcount
-    conn.close()
-    return affected > 0
 
 
 def get_company(company_id: int) -> Optional[dict]:
@@ -775,7 +766,7 @@ def get_companies_for_session(session_key: str) -> list[dict]:
             SELECT ss.id FROM search_sessions ss
             WHERE ss.session_key = ?
         )
-        LEFT JOIN contacts ct ON ct.company_id = c.id AND ct.is_deleted = 0
+        LEFT JOIN contacts ct ON ct.company_id = c.id
         WHERE c.search_query = s.industry
         GROUP BY c.id
         ORDER BY c.name
@@ -991,7 +982,6 @@ def get_validation_contacts_by_session(session_key: str) -> list[dict]:
         LEFT JOIN email_validation_cache evc ON evc.email = ct.email
         WHERE s.session_key=?
           AND ct.email IS NOT NULL AND ct.email != ''
-          AND (ct.is_deleted IS NULL OR ct.is_deleted = 0)
         ORDER BY ct.full_name
     """, (session_key,)).fetchall()
     conn.close()
@@ -1029,7 +1019,6 @@ def get_all_derived_emails_to_validate(
             JOIN companies c ON c.id = ct.company_id
             WHERE ct.email IS NOT NULL AND ct.email != ''
               AND ct.is_derived_email = 1
-              AND (ct.is_deleted IS NULL OR ct.is_deleted = 0)
               AND (ct.smtp_validated_at IS NULL
                    OR ct.smtp_validated_at < datetime('now', ?))
             ORDER BY ct.smtp_validated_at ASC, ct.id ASC
@@ -1043,7 +1032,6 @@ def get_all_derived_emails_to_validate(
             JOIN companies c ON c.id = ct.company_id
             WHERE ct.email IS NOT NULL AND ct.email != ''
               AND ct.is_derived_email = 1
-              AND (ct.is_deleted IS NULL OR ct.is_deleted = 0)
               AND (ct.smtp_validation_status IS NULL
                    OR ct.smtp_validation_status IN ('Unknown', 'Maybe'))
             ORDER BY ct.id ASC
@@ -1064,24 +1052,20 @@ def count_all_derived_emails() -> dict:
         SELECT COUNT(*) FROM contacts
         WHERE email IS NOT NULL AND email != ''
           AND is_derived_email = 1
-          AND (is_deleted IS NULL OR is_deleted = 0)
     """).fetchone()[0]
     ready = cur.execute("""
         SELECT COUNT(*) FROM contacts
         WHERE email_ready_for_export = 1
-          AND (is_deleted IS NULL OR is_deleted = 0)
     """).fetchone()[0]
     rejected = cur.execute("""
         SELECT COUNT(*) FROM contacts
         WHERE smtp_validation_status = 'Do Not Send'
-          AND (is_deleted IS NULL OR is_deleted = 0)
     """).fetchone()[0]
     unvalidated = cur.execute("""
         SELECT COUNT(*) FROM contacts
         WHERE email IS NOT NULL AND email != ''
           AND is_derived_email = 1
           AND smtp_validation_status IS NULL
-          AND (is_deleted IS NULL OR is_deleted = 0)
     """).fetchone()[0]
     conn.close()
     return {
@@ -1109,7 +1093,6 @@ def get_ready_for_export_contacts(limit: int = 500) -> list[dict]:
         JOIN companies c ON c.id = ct.company_id
         JOIN search_sessions s ON s.industry = c.search_query
         WHERE ct.email_ready_for_export = 1
-          AND (ct.is_deleted IS NULL OR ct.is_deleted = 0)
         ORDER BY c.name, ct.full_name
         LIMIT ?
     """, (limit,)).fetchall()

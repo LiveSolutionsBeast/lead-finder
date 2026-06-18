@@ -368,7 +368,7 @@ def discover_and_store_pattern(company_id: int, company_name: str, website: str)
         if row:
             city, state, business_type = (row[0] or ""), (row[1] or ""), (row[2] or "")
         emp_rows = cur.execute(
-            "SELECT first_name, last_name FROM contacts WHERE company_id=? AND is_deleted=0 LIMIT 5",
+            "SELECT first_name, last_name FROM contacts WHERE company_id=? LIMIT 5",
             (company_id,)
         ).fetchall()
         for fn, ln in emp_rows:

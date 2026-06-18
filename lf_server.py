@@ -43,9 +43,9 @@ from lf_config import get
 from lf_db import (
     get_db, get_all_sessions, get_session, get_session_companies,
     get_session_contacts, upsert_contact, upsert_company,
-    soft_delete_contact, patch_contact, resume_session, delete_session,
-    get_companies_for_session, bulk_soft_delete_companies,
-    create_company_manual, bulk_soft_delete_contacts,
+    delete_contact, patch_contact, resume_session, delete_session,
+    get_companies_for_session, bulk_delete_companies,
+    create_company_manual, bulk_delete_contacts,
     init_db,  # added 2026-06-07: ensure schema is up-to-date on startup
 )
 from lf_search import search_companies as google_search, enrich_company_details
@@ -467,7 +467,7 @@ async def api_bulk_delete_companies(
         int_ids = [int(i) for i in ids]
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid company ID format")
-    affected = bulk_soft_delete_companies(int_ids)
+    affected = bulk_delete_companies(int_ids)
     return {
         "status": "ok",
         "message": f"Deleted {affected} companies",
@@ -561,7 +561,7 @@ async def api_companies(
         "(:quality_grade = '' OR c.quality_grade = :quality_grade)",
     ]
     if not include_deleted:
-        where_clauses.append("(c.is_deleted IS NULL OR c.is_deleted = 0)")
+        where_clauses.append("1=1")  # no-op: all deletes are permanent now
     where_sql = " AND ".join(where_clauses)
     query = f"""
         SELECT c.id, c.name, c.city, c.state, c.street, c.postal_code, c.website,
@@ -572,10 +572,10 @@ async def api_companies(
                c.canonical_business_type, c.business_type_confidence,
                c.ai_sanity_status, c.ai_sanity_notes,
                c.quality_score, c.quality_grade,
-               (c.is_deleted IS NULL OR c.is_deleted = 0) as is_active,
+               1 as is_active,
                COUNT(ct.id) as contact_count
         FROM companies c
-        LEFT JOIN contacts ct ON ct.company_id = c.id AND (ct.is_deleted IS NULL OR ct.is_deleted = 0)
+        LEFT JOIN contacts ct ON ct.company_id = c.id
         WHERE {where_sql}
         GROUP BY c.id
         ORDER BY c.quality_score DESC, c.name
@@ -614,7 +614,7 @@ async def api_contacts(
     rows = cur.execute(f"""
         SELECT ct.id, ct.company_id, ct.full_name, ct.title, ct.linkedin_url, ct.confidence_score,
                ct.is_local, ct.hq_contact, ct.data_provenance, ct.email, ct.is_derived_email,
-               ct.is_manually_edited, ct.is_deleted,
+               ct.is_manually_edited,
                ct.ai_verified_title, ct.ai_title_confidence, ct.ai_title_source,
                ct.found_at,
                c.name as company_name, c.city as company_city, c.state as company_state,
@@ -626,7 +626,6 @@ async def api_contacts(
           AND (:title = '' OR ct.title LIKE '%' || :title || '%')
           AND (:city = '' OR c.city LIKE '%' || :city || '%')
           AND ct.confidence_score >= :min_confidence
-          AND (ct.is_deleted IS NULL OR ct.is_deleted = 0)
         {order_clause}
         LIMIT :limit
     """, {"company_name": company_name, "title": title,
@@ -704,13 +703,13 @@ async def api_companies_dropdowns(_: str = Header(None, alias="X-LF-Key")):
     conn = get_db()
     cur = conn.cursor()
     industries = [r[0] for r in cur.execute(
-        "SELECT DISTINCT business_type FROM companies WHERE business_type != '' AND (is_deleted IS NULL OR is_deleted = 0) ORDER BY business_type"
+        "SELECT DISTINCT business_type FROM companies WHERE business_type != '' ORDER BY business_type"
     ).fetchall()]
     cities = [r[0] for r in cur.execute(
-        "SELECT DISTINCT city FROM companies WHERE city != '' AND (is_deleted IS NULL OR is_deleted = 0) ORDER BY city"
+        "SELECT DISTINCT city FROM companies WHERE city != '' ORDER BY city"
     ).fetchall()]
     states = [r[0] for r in cur.execute(
-        "SELECT DISTINCT state FROM companies WHERE state != '' AND (is_deleted IS NULL OR is_deleted = 0) ORDER BY state"
+        "SELECT DISTINCT state FROM companies WHERE state != '' ORDER BY state"
     ).fetchall()]
     conn.close()
     return {"industries": industries, "cities": cities, "states": states}
@@ -724,14 +723,14 @@ async def api_contacts_dropdowns(_: str = Header(None, alias="X-LF-Key")):
     cur = conn.cursor()
     companies = [r[0] for r in cur.execute(
         "SELECT DISTINCT c.name FROM companies c JOIN contacts ct ON ct.company_id = c.id "
-        "WHERE (ct.is_deleted IS NULL OR ct.is_deleted = 0) AND c.name != '' ORDER BY c.name"
+        "WHERE c.name != '' ORDER BY c.name"
     ).fetchall()]
     titles = [r[0] for r in cur.execute(
-        "SELECT DISTINCT title FROM contacts WHERE title != '' AND (is_deleted IS NULL OR is_deleted = 0) ORDER BY title"
+        "SELECT DISTINCT title FROM contacts WHERE title != '' ORDER BY title"
     ).fetchall()]
     cities = [r[0] for r in cur.execute(
         "SELECT DISTINCT c.city FROM companies c JOIN contacts ct ON ct.company_id = c.id "
-        "WHERE (ct.is_deleted IS NULL OR ct.is_deleted = 0) AND c.city != '' ORDER BY c.city"
+        "WHERE c.city != '' ORDER BY c.city"
     ).fetchall()]
     conn.close()
     return {"companies": companies, "titles": titles, "cities": cities}
@@ -818,12 +817,12 @@ async def api_delete_contact(
     contact_id: int,
     _: str = Header(None, alias="X-LF-Key"),
 ):
-    """Soft-delete a contact (marks is_deleted=1)."""
+    """Permanently delete a contact."""
     verify_key(_)
-    success = soft_delete_contact(contact_id)
+    success = delete_contact(contact_id)
     if not success:
         raise HTTPException(status_code=404, detail="Contact not found")
-    return {"status": "ok", "message": f"Contact {contact_id} soft-deleted"}
+    return {"status": "ok", "message": f"Contact {contact_id} permanently deleted"}
 
 
 @app.patch("/api/contact/{contact_id}")
@@ -857,7 +856,7 @@ async def api_bulk_delete_contacts(
         int_ids = [int(i) for i in ids]
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid contact ID format")
-    affected = bulk_soft_delete_contacts(int_ids)
+    affected = bulk_delete_contacts(int_ids)
     return {
         "status": "ok",
         "message": f"Deleted {affected} contacts",
@@ -886,7 +885,7 @@ async def api_bulk_validate_contacts_emails(
     cur = conn.cursor()
     placeholders = ",".join("?" * len(int_ids))
     rows = cur.execute(
-        f"SELECT id, email FROM contacts WHERE id IN ({placeholders}) AND email IS NOT NULL AND email != '' AND (is_deleted IS NULL OR is_deleted=0)",
+        f"SELECT id, email FROM contacts WHERE id IN ({placeholders}) AND email IS NOT NULL AND email != ''",
         int_ids,
     ).fetchall()
     conn.close()
@@ -952,7 +951,7 @@ async def api_validate_single_contact_email(
     verify_key(_)
     conn = get_db()
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT id, email FROM contacts WHERE id=? AND (is_deleted IS NULL OR is_deleted=0)", (contact_id,)).fetchone()
+    row = conn.execute("SELECT id, email FROM contacts WHERE id=?", (contact_id,)).fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -1272,15 +1271,15 @@ async def api_stats(_: str = Header(None, alias="X-LF-Key")):
     try:
         conn = get_db()
         cur = conn.cursor()
-        companies = cur.execute("SELECT COUNT(*) FROM companies WHERE is_deleted IS NULL OR is_deleted = 0").fetchone()[0]
-        contacts = cur.execute("SELECT COUNT(*) FROM contacts WHERE is_deleted IS NULL OR is_deleted = 0").fetchone()[0]
+        companies = cur.execute("SELECT COUNT(*) FROM companies").fetchone()[0]
+        contacts = cur.execute("SELECT COUNT(*) FROM contacts").fetchone()[0]
         sessions = cur.execute("SELECT COUNT(*) FROM search_sessions").fetchone()[0]
         recent = [dict(r) for r in cur.execute(
             "SELECT session_key, industry, city, state, created_at FROM search_sessions ORDER BY created_at DESC LIMIT 10"
         ).fetchall()]
         top_companies = [dict(r) for r in cur.execute(
             "SELECT c.name, c.city, c.state, COUNT(ct.id) as contact_count "
-            "FROM companies c LEFT JOIN contacts ct ON ct.company_id = c.id AND (ct.is_deleted IS NULL OR ct.is_deleted = 0) "
+            "FROM companies c LEFT JOIN contacts ct ON ct.company_id = c.id "
             "GROUP BY c.id ORDER BY contact_count DESC LIMIT 10"
         ).fetchall()]
         conn.close()
@@ -1312,7 +1311,7 @@ async def api_backfill_quality_scores(
         cur = conn.cursor()
         rows = [dict(r) for r in cur.execute(
             "SELECT id, name, rating, user_rating_count, website, phone, business_type "
-            "FROM companies WHERE (is_deleted IS NULL OR is_deleted = 0) "
+            "FROM companies "
             "LIMIT ?", (limit,)
         ).fetchall()]
         scored = 0
@@ -1340,9 +1339,11 @@ async def api_backfill_quality_scores(
                 "has_phone": bool(c.get("phone")),
                 "business_type": c.get("business_type"),
             })
-            # Optionally soft-delete below threshold
+            # Optionally hard-delete below threshold
             if hide_below > 0 and qs < hide_below:
-                cur.execute("UPDATE companies SET is_deleted=1 WHERE id=?", (c["id"],))
+                cur.execute("DELETE FROM contacts WHERE company_id=?", (c["id"],))
+                cur.execute("DELETE FROM discovery_job_items WHERE company_id=?", (c["id"],))
+                cur.execute("DELETE FROM companies WHERE id=?", (c["id"],))
                 hidden += 1
             cur.execute(
                 "UPDATE companies SET quality_score=?, quality_grade=?, quality_signals=? WHERE id=?",
@@ -2033,27 +2034,13 @@ async def api_delete_company(
     company_id: int,
     _: str = Header(None, alias="X-LF-Key"),
 ):
-    """Soft-delete a company (is_deleted=1). Reversible. Hides from WebUI lists."""
+    """Permanently delete a company and all its contacts."""
     verify_key(_)
-    from lf_db import soft_delete_company
-    success = soft_delete_company(company_id)
+    from lf_db import delete_company
+    success = delete_company(company_id)
     if not success:
         raise HTTPException(status_code=404, detail="Company not found")
-    return {"status": "ok", "message": f"Company {company_id} soft-deleted"}
-
-
-@app.post("/api/company/{company_id}/undelete")
-async def api_undelete_company(
-    company_id: int,
-    _: str = Header(None, alias="X-LF-Key"),
-):
-    """Re-activate a soft-deleted company (is_deleted=0)."""
-    verify_key(_)
-    from lf_db import undelete_company
-    success = undelete_company(company_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Company not found")
-    return {"status": "ok", "message": f"Company {company_id} re-activated"}
+    return {"status": "ok", "message": f"Company {company_id} permanently deleted"}
 
 
 @app.get("/api/company-by-id/{company_id}")
@@ -2107,7 +2094,7 @@ async def api_export_company_email_patterns(
     company = dict(company)
 
     contacts = cur.execute(
-        "SELECT first_name, last_name, full_name, title, linkedin_url FROM contacts WHERE company_id=? AND (is_deleted IS NULL OR is_deleted = 0)",
+        "SELECT first_name, last_name, full_name, title, linkedin_url FROM contacts WHERE company_id=?",
         (company_id,)
     ).fetchall()
     contacts = [dict(r) for r in contacts]

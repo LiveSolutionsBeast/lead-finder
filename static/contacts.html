@@ -249,7 +249,7 @@ function updateBulkUI() { const n = selectedIds.size; document.getElementById('b
 async function bulkDelete() {
   const ids = Array.from(selectedIds);
   if (!ids.length) return;
-  if (!confirm('Soft-delete ' + ids.length + ' contacts? They can be restored later.')) return;
+  if (!confirm('Permanently delete ' + ids.length + ' contacts?\n\nThis cannot be undone.')) return;
   try {
     const r = await fetch(API_BASE+'/contacts/bulk-delete', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids}) });
     const d = await r.json();
