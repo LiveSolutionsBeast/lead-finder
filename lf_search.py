@@ -6,7 +6,10 @@ Google Places Text Search API for discovering companies by industry + location.
 Two-pass: pass 1 = companies (immediate), pass 2 = executives (background).
 """
 
+import json
+import re
 import time, uuid, threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -45,7 +48,7 @@ _last_details_time = 0.0
 def _headers(api_key: str):
     return {
         "X-Goog-Api-Key": api_key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.shortFormattedAddress,places.formattedAddress,places.primaryType,places.location,places.internationalPhoneNumber,places.rating,places.userRatingCount",
+        "X-Goog-FieldMask": "places.id,places.displayName,places.shortFormattedAddress,places.formattedAddress,places.primaryType,places.location,places.addressComponents,places.internationalPhoneNumber,places.rating,places.userRatingCount",
         "Content-Type": "application/json",
     }
 
@@ -137,6 +140,333 @@ def get_place_details_fast(api_key: str, place_id: str) -> Optional[dict]:
     except Exception as e:
         print(f"[search] get_place_details_fast error: {e}")
         return None
+
+
+# ── Domain Verification (Phase 1) ───────────────────────────────────────────
+
+def _normalize_domain(url_or_domain: str) -> Optional[str]:
+    """Extract bare email domain from a URL or domain string."""
+    if not url_or_domain:
+        return None
+    s = url_or_domain.strip().lower()
+    if not s:
+        return None
+    if "://" not in s:
+        s = "http://" + s
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(s).hostname
+    except Exception:
+        host = None
+    if not host:
+        m = re.match(r"^(?:[^@/]+@)?([a-z0-9.-]+\.[a-z]{2,})$", url_or_domain.strip().lower())
+        host = m.group(1) if m else None
+    if not host:
+        return None
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _is_aggregator_domain(domain: str) -> bool:
+    """Return True if domain is a known aggregator / 3rd-party directory."""
+    if not domain:
+        return True
+    d = domain.lower().strip()
+    return any(d == agg or d.endswith("." + agg) for agg in AGGREGATOR_DOMAINS)
+
+
+def _mx_record_exists(domain: str, timeout: float = 5.0) -> bool:
+    """Return True if the domain has one or more MX records."""
+    if not domain:
+        return False
+    try:
+        import dns.resolver
+        answers = dns.resolver.resolve(domain, "MX", lifetime=timeout)
+        return len(answers) > 0
+    except Exception:
+        return False
+
+
+def _homepage_has_domain_emails(domain: str, timeout: float = 10.0) -> tuple[bool, list[str]]:
+    """
+    Fetch homepage and search for published email addresses at @domain.
+    Returns (found_any, list_of_emails).
+    """
+    if not domain:
+        return False, []
+    emails: list[str] = []
+    urls = [f"https://{domain}", f"http://{domain}"]
+    regex = re.compile(r'\b([a-zA-Z0-9._-]+@' + re.escape(domain.lower()) + r')\b')
+    for url in urls:
+        try:
+            resp = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0 (LeadFinder domain verifier)"})
+            if resp.status_code == 200:
+                text = resp.text
+                found = regex.findall(text)
+                for e in found:
+                    e = e.lower()
+                    if e not in emails:
+                        emails.append(e)
+                if emails:
+                    return True, emails
+        except Exception:
+            continue
+    return False, emails
+
+
+def _search_published_emails(
+    domain: str,
+    company_name: str,
+    timeout: int = 8,
+    city: str = "",
+    state: str = "",
+    industry: str = "",
+) -> tuple[bool, list[str]]:
+    """Search the web for published @domain emails for this company."""
+    if not domain:
+        return False, []
+    from lf_search_providers import search
+    emails: list[str] = []
+    queries = [
+        f'"@{domain}" "{company_name}" email',
+        f'"@{domain}" contact email',
+        f'site:{domain} "@" email',
+    ]
+    # Add company-specific context queries when location is available.
+    if company_name and city and state:
+        queries.append(f'"{company_name}" "{city}, {state}" email')
+        if industry:
+            queries.append(f'"{company_name}" {industry} "{city}, {state}" email')
+            queries.append(f'"{company_name}" manufacturer "{city}, {state}" email')
+    regex = re.compile(r'\b([a-zA-Z0-9._-]+@' + re.escape(domain.lower()) + r')\b')
+    for q in queries:
+        try:
+            results, _ = search(q, timeout=timeout, ai_extract=False)
+            for r in results:
+                text = " ".join(filter(None, [r.get("title", ""), r.get("snippet", ""), r.get("url", "")]))
+                for e in regex.findall(text):
+                    e = e.lower()
+                    if e not in emails:
+                        emails.append(e)
+            if emails:
+                return True, emails
+        except Exception:
+            continue
+    return bool(emails), emails
+
+
+def verify_company_domain(
+    company_id: int,
+    *,
+    require_corroboration: bool = True,
+    timeout: float = 30.0,
+    places_api_key: Optional[str] = None,
+) -> dict:
+    """
+    Phase 1: confirm a company's real email domain via Google Places + corroboration.
+
+    Steps:
+      1. Load company (name, city, state, stored website).
+      2. Google Places Text Search for '"<name>" <city> <state>' (or with industry/business_type).
+      3. Pick the result whose name best matches and has a non-aggregator websiteUri.
+      4. Normalize websiteUri -> confirmed_domain.
+      5. Cross-check: MX lookup OR published @domain emails on homepage OR web search.
+      6. Compare with stored website domain; set email_domain_mismatch if they differ.
+      7. Persist evidence on companies.{email_domain_confirmed, email_domain_source,
+         email_domain_checked_at, email_domain_evidence, email_domain_mismatch}.
+
+    Returns:
+      {
+        "company_id": int,
+        "stored_domain": str | None,
+        "confirmed_domain": str | None,
+        "source": "google_places" | "stored" | "none",
+        "mismatch": bool,
+        "corroborated": bool,
+        "evidence": dict,
+        "updated": bool,
+      }
+    """
+    from lf_db import get_db, get_company, patch_company
+
+    company = get_company(company_id) or {}
+    if not company:
+        return {"company_id": company_id, "error": "Company not found"}
+
+    name = (company.get("name") or "").strip()
+    city = (company.get("city") or "").strip()
+    state = (company.get("state") or "").strip()
+    industry = (company.get("business_type") or "").strip()
+    stored_website = (company.get("website") or "").strip()
+    stored_domain = _normalize_domain(stored_website)
+
+    api_key = places_api_key or google_maps_api_key()
+    confirmed_domain: Optional[str] = None
+    source = "none"
+    evidence: dict = {
+        "stored_domain": stored_domain,
+        "google_places_candidates": [],
+        "mx_ok": False,
+        "homepage_emails": [],
+        "search_emails": [],
+        "corroboration_count": 0,
+        "errors": [],
+    }
+
+    if api_key and name and city and state:
+        # Build queries; prefer exact name + location, add industry disambiguation.
+        queries = [f'"{name}" {city} {state}']
+        if industry:
+            queries.append(f'"{name}" {city} {state} {industry}')
+        # Some company names include city; still try a clean variant.
+        clean_name = re.sub(r"\s*,?\s*(Inc\.?|LLC|Corp\.?|Ltd\.?|Co\.)", "", name, flags=re.I).strip()
+        if clean_name and clean_name != name:
+            queries.append(f'"{clean_name}" {city} {state}')
+
+        loc = get_location_bias(city, state, 25)
+        lat, lng = (loc["lat"], loc["lng"]) if loc else (0.0, 0.0)
+        radius_meters = int(25 * 1609.34)
+
+        for q in queries:
+            try:
+                places = text_search(api_key, q, lat, lng, radius_meters, max_results=10)
+                for p in places:
+                    website_uri = (p.get("websiteUri") or "").strip()
+                    if not website_uri:
+                        continue
+                    cand_domain = _normalize_domain(website_uri)
+                    if not cand_domain or _is_aggregator_domain(cand_domain):
+                        continue
+                    evidence["google_places_candidates"].append({
+                        "place_id": p.get("id"),
+                        "name": p.get("displayName", {}).get("text") if isinstance(p.get("displayName"), dict) else p.get("displayName"),
+                        "domain": cand_domain,
+                        "website_uri": website_uri,
+                    })
+                    if not confirmed_domain:
+                        confirmed_domain = cand_domain
+                        source = "google_places"
+                if confirmed_domain:
+                    break
+            except Exception as e:
+                evidence["errors"].append(f"Places query failed: {q} -> {e}")
+
+    # If no Places result, fall back to the stored domain if it looks real.
+    if not confirmed_domain and stored_domain and not _is_aggregator_domain(stored_domain):
+        confirmed_domain = stored_domain
+        source = "stored"
+
+    # Cross-check the candidate confirmed domain; also consider the stored domain
+    # as an alternative when it has stronger corroboration (e.g. arrowheadproducts.com
+    # vs .net). Pick the domain with the highest corroboration count; tie-break
+    # toward Google Places result, then stored domain.
+    def _score_domain(domain: Optional[str]) -> tuple[int, bool, list[str], bool, list[str]]:
+        if not domain:
+            return -1, False, [], False, []
+        mx_ok = _mx_record_exists(domain)
+        has_homepage, homepage_emails = _homepage_has_domain_emails(domain)
+        has_search, search_emails = _search_published_emails(
+            domain, name, city=city, state=state, industry=industry
+        )
+        score = sum([mx_ok, has_homepage, has_search])
+        return score, mx_ok, homepage_emails, has_search, search_emails
+
+    candidate_domains: list[tuple[str, str]] = []
+    if confirmed_domain:
+        candidate_domains.append((confirmed_domain, source))
+    if stored_domain and stored_domain != confirmed_domain and not _is_aggregator_domain(stored_domain):
+        candidate_domains.append((stored_domain, "stored_alternative"))
+
+    best_domain: Optional[str] = None
+    best_source = "none"
+    best_score = -1
+    best_mx_ok = False
+    best_has_homepage = False
+    best_homepage_emails: list[str] = []
+    best_has_search = False
+    best_search_emails: list[str] = []
+    for cand, cand_source in candidate_domains:
+        score, mx_ok, homepage_emails, has_search, search_emails = _score_domain(cand)
+        if score > best_score:
+            best_score = score
+            best_domain = cand
+            best_source = cand_source
+            best_mx_ok = mx_ok
+            best_has_homepage = bool(homepage_emails)
+            best_homepage_emails = homepage_emails
+            best_has_search = has_search
+            best_search_emails = search_emails
+
+    # Tie-break: prefer Google Places over stored alternative; prefer
+    # stored alternative only when it strictly outscores.
+    if best_domain == confirmed_domain and best_source != source:
+        best_source = source
+
+    confirmed_domain = best_domain
+    source = best_source
+    evidence["homepage_emails"] = best_homepage_emails
+    evidence["search_emails"] = best_search_emails
+    evidence["mx_ok"] = best_mx_ok
+    evidence["homepage_emails_found"] = best_has_homepage
+    evidence["search_emails_found"] = best_has_search
+    evidence["corroboration_count"] = best_score
+
+    corroborated = False
+    if confirmed_domain:
+        corroborated = not require_corroboration or best_score >= 1
+        mismatch = bool(stored_domain and stored_domain != confirmed_domain)
+        evidence["mismatch"] = mismatch
+
+        now = datetime.now(timezone.utc).isoformat()
+        evidence_json = json.dumps(evidence, default=str)
+        update = {
+            "email_domain_confirmed": confirmed_domain,
+            "email_domain_source": source,
+            "email_domain_checked_at": now,
+            "email_domain_evidence": evidence_json,
+            "email_domain_mismatch": 1 if mismatch else 0,
+        }
+        # Also update website to the confirmed domain when mismatched or when
+        # the stored domain was empty.
+        if mismatch or not stored_domain:
+            update["website"] = f"https://{confirmed_domain}"
+            old_notes = (company.get("manual_notes") or "").strip()
+            note = f"[domain-verify] website changed from {stored_website} ({stored_domain}) to {confirmed_domain} at {now}"
+            update["manual_notes"] = f"{old_notes}\n{note}".strip() if old_notes else note
+        patch_company(company_id, update)
+        return {
+            "company_id": company_id,
+            "stored_domain": stored_domain,
+            "confirmed_domain": confirmed_domain,
+            "source": source,
+            "mismatch": mismatch,
+            "corroborated": corroborated,
+            "evidence": evidence,
+            "updated": True,
+        }
+
+    # No confirmed domain at all.
+    now = datetime.now(timezone.utc).isoformat()
+    evidence_json = json.dumps(evidence, default=str)
+    patch_company(company_id, {
+        "email_domain_confirmed": None,
+        "email_domain_source": None,
+        "email_domain_checked_at": now,
+        "email_domain_evidence": evidence_json,
+        "email_domain_mismatch": 0,
+    })
+    return {
+        "company_id": company_id,
+        "stored_domain": stored_domain,
+        "confirmed_domain": None,
+        "source": source,
+        "mismatch": False,
+        "corroborated": False,
+        "evidence": evidence,
+        "updated": True,
+        "error": "Could not confirm a real email domain",
+    }
 
 
 # ── Quality Scoring & Filtering (added 2026-06-09, QC-15) ────────────────────

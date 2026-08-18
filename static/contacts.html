@@ -45,8 +45,9 @@ th:nth-child(7),td:nth-child(7){width:5%}  /* Found */
 th:nth-child(8),td:nth-child(8){width:4%}  /* Conf */
 th:nth-child(9),td:nth-child(9){width:4%}  /* Local */
 th:nth-child(10),td:nth-child(10){width:3%} /* Score */
-th:nth-child(11),td:nth-child(11){width:4%} /* LinkedIn */
-th:nth-child(12),td:nth-child(12){width:13%;overflow:visible} /* Actions */
+th:nth-child(11),td:nth-child(11){width:7%} /* Verified */
+th:nth-child(12),td:nth-child(12){width:4%} /* LinkedIn */
+th:nth-child(13),td:nth-child(13){width:13%;overflow:visible} /* Actions */
 .badge{display:inline-block;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;font-weight:600}
 .badge-local{background:#22c55e33;color:#22c55e}
 .badge-hq{background:#f59e0b33;color:#f59e0b}
@@ -85,6 +86,34 @@ th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
 th.sortable::after{content:'⇅';position:absolute;right:0.4rem;top:50%;transform:translateY(-50%);color:#475569;font-size:0.75rem;opacity:0.5}
 th.sortable.sort-asc::after{content:'▲';color:#38bdf8;opacity:1}
 th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
+/* Escalate panel */
+.escalate-panel{display:block;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:0.85rem 1rem;margin-bottom:0.75rem}
+.escalate-header{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.escalate-title{font-weight:700;color:#38bdf8;font-size:0.95rem}
+.escalate-status{font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600;text-transform:uppercase;background:#38bdf833;color:#38bdf8}
+.escalate-status.completed{background:#22c55e33;color:#22c55e}
+.escalate-status.failed{background:#ef444433;color:#ef4444}
+.escalate-progress-row{display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem}
+.escalate-bar{flex:1;height:8px;background:#0f172a;border-radius:4px;overflow:hidden}
+.escalate-bar-fill{height:100%;background:#38bdf8;width:0%;transition:width 0.3s;border-radius:4px}
+.escalate-bar-fill.completed{background:#22c55e}
+.escalate-bar-fill.failed{background:#ef4444}
+.escalate-count{color:#94a3b8;font-size:0.8rem;min-width:80px;text-align:right}
+.escalate-current{color:#cbd5e1;font-size:0.85rem;margin-bottom:0.5rem;font-style:italic}
+.escalate-log{max-height:280px;overflow-y:auto;background:#0f172a;border-radius:6px;padding:0.5rem 0.75rem;font-family:'SF Mono',Monaco,monospace;font-size:0.72rem;line-height:1.5}
+.escalate-log-line{padding:0.15rem 0;color:#94a3b8;display:flex;gap:0.5rem;align-items:flex-start}
+.escalate-log-line .ts{color:#475569;flex-shrink:0}
+.escalate-log-line .tag{font-weight:600;flex-shrink:0;min-width:40px}
+.escalate-log-line .tag.M1{color:#a78bfa}
+.escalate-log-line .tag.M2{color:#38bdf8}
+.escalate-log-line .tag.M3{color:#f59e0b}
+.escalate-log-line .tag.M4{color:#ec4899}
+.escalate-log-line .tag.M5{color:#22c55e}
+.escalate-log-line .tag.start,.escalate-log-line .tag.done{color:#10b981}
+.escalate-log-line .tag.write,.escalate-log-line .tag.relocate{color:#14b8a6}
+.escalate-log-line .tag.error,.escalate-log-line .tag.skipped{color:#ef4444}
+.escalate-log-line .label{color:#e2e8f0}
+.escalate-log-line .detail{color:#64748b;font-size:0.7rem;margin-top:0.1rem;display:block}
 </style>
 </head>
 <body>
@@ -109,10 +138,15 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </div>
 
 <div class="card">
-<h2>Contacts</h2>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+  <h2 style="margin:0;">Contacts</h2>
+  <button class="btn btn-green" onclick="exportVisibleContacts()" title="Export all currently visible contacts as CSV">&#8681; Export CSV</button>
+</div>
 <div class="filter-row">
-<label style="font-size:0.8rem;color:#94a3b8;">Group: <select id="groupBy" onchange="loadContacts()"><option value="company">Company</option><option value="none">Flat List</option></select></label>
-<label style="font-size:0.8rem;color:#94a3b8;">Sort: <select id="sortBy" onchange="onSortDropdownChange()"><option value="confidence">By Confidence</option><option value="recent">Most Recent</option></select></label>
+<label style="font-size:0.8rem;color:#94a3b8;">Group: <select id="groupBy" onchange="loadContacts()"><option value="company">Company</option><option value="source">Source (LI Plugin vs other)</option><option value="none">Flat List</option></select></label>
+<label style="font-size:0.8rem;color:#94a3b8;">Sort: <select id="sortBy" onchange="onSortDropdownChange()"><option value="confidence">By Confidence</option><option value="recent">Most Recent</option><option value="oldest">Oldest</option></select></label>
+<label style="font-size:0.8rem;color:#94a3b8;">Source: <select id="filterSource" onchange="loadContacts()"><option value="">All Sources</option></select></label>
+<label style="font-size:0.8rem;color:#94a3b8;">Session: <select id="filterSession" onchange="loadContacts()"><option value="">All Sessions</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">Company: <select id="filterCompany" onchange="loadContacts()"><option value="">All</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">Title: <select id="filterTitle" onchange="loadContacts()"><option value="">All</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">City: <select id="filterCity" onchange="loadContacts()"><option value="">All</option></select></label>
@@ -129,9 +163,23 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </div>
 <div class="bulk-bar" id="bulkBar">
 <span class="bulk-count" id="bulkCount">0 selected</span>
+<button class="btn btn-sm btn-purple" onclick="bulkVerifyContacts()" title="Run hardened escalator: AI + cascading LinkedIn search + independent URL verification">&#9889; Escalate</button>
 <button class="btn btn-sm btn-red" onclick="bulkDelete()" title="Permanently delete selected contacts">&#10005; Delete</button>
-<button class="btn btn-sm btn-purple" onclick="bulkValidate()" title="SMTP-validate emails for selected contacts">&#9889; Validate Emails</button>
+<button class="btn btn-sm btn-orange" onclick="bulkValidate()" title="SMTP-validate emails for selected contacts">&#9993; Validate Emails</button>
 <button class="btn btn-sm btn-slate" onclick="clearSelection()" title="Deselect all">Clear</button>
+</div>
+<div id="escalatePanel" class="escalate-panel" style="display:none;">
+  <div class="escalate-header">
+    <span class="escalate-title">Hardened Verification Escalator</span>
+    <span id="escalateStatus" class="escalate-status">running</span>
+    <button class="btn btn-sm btn-slate" onclick="closeEscalatePanel()" style="margin-left:auto;">Close</button>
+  </div>
+  <div class="escalate-progress-row">
+    <div class="escalate-bar"><div id="escalateBar" class="escalate-bar-fill"></div></div>
+    <span id="escalateCount" class="escalate-count">0 / 0</span>
+  </div>
+  <div id="escalateCurrent" class="escalate-current">Starting...</div>
+  <div id="escalateLog" class="escalate-log"></div>
 </div>
 <div class="table-wrap">
 <table>
@@ -146,6 +194,7 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 <th>Conf</th>
 <th>Local</th>
 <th class="sortable" data-sort-key="confidence_score">Score</th>
+<th title="Verification evidence: green = independently confirmed LinkedIn URL; amber = AI estimate; red = needs review">Verified</th>
 <th>LinkedIn</th>
 <th>Actions</th>
 </tr></thead>
@@ -187,12 +236,30 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </div>
 </div>
 
+<!-- Manual Validate Modal (Phase 1 / t1.4) -->
+<div class="modal-overlay" id="manualValidateModal">
+<div class="modal" style="max-width:420px;">
+<h3 id="manualValidateTitle">Manual Validation</h3>
+<div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.75rem;">
+  Mark this contact's email as known-good or known-bad. Use when you've sent an email
+  and got a reply (valid) or got a hard bounce (invalid).
+</div>
+<div class="modal-row"><label>Contact</label><div id="manualValidateContact" style="font-weight:600;"></div></div>
+<div class="modal-row"><label>Email</label><div id="manualValidateEmail" style="color:#94a3b8;font-family:monospace;"></div></div>
+<div class="modal-row"><label>Reason (required, for audit)</label><textarea id="manualValidateReason" placeholder="e.g. Got reply from CEO on 2026-07-20; or 550 user unknown on bounce"></textarea></div>
+<div class="modal-actions">
+<button class="btn btn-orange btn-sm" onclick="closeManualValidate()">Cancel</button>
+<button class="btn btn-red btn-sm" id="manualValidateInvalidBtn" onclick="submitManualValidate('invalid')">&#10005; Mark Invalid</button>
+<button class="btn btn-green btn-sm" id="manualValidateValidBtn" onclick="submitManualValidate('valid')">&#10003; Mark Valid</button>
+</div>
+</div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<script src="/api-key-loader.js"></script>
 <script>
-const API_BASE = '/api';
-const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 let currentEditId = null;
 let allContacts = [];
 let companyOptions = [];
@@ -234,9 +301,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function onSortDropdownChange() {
   const v = document.getElementById('sortBy').value;
-  currentSort.key = v === 'recent' ? 'found_at' : 'confidence_score';
-  currentSort.dir = 'desc';
-  document.querySelectorAll('th.sortable').forEach(th => { th.classList.remove('sort-asc','sort-desc'); if (th.getAttribute('data-sort-key') === currentSort.key) th.classList.add('sort-desc'); });
+  // 'oldest' = found_at ASC (oldest first); 'recent' = found_at DESC; 'confidence' = score DESC.
+  if (v === 'oldest') { currentSort.key = 'found_at'; currentSort.dir = 'asc'; }
+  else if (v === 'recent') { currentSort.key = 'found_at'; currentSort.dir = 'desc'; }
+  else { currentSort.key = 'confidence_score'; currentSort.dir = 'desc'; }
+  document.querySelectorAll('th.sortable').forEach(th => { th.classList.remove('sort-asc','sort-desc'); const kk = th.getAttribute('data-sort-key'); if (kk === currentSort.key) th.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc'); });
   loadContacts();
 }
 
@@ -251,7 +320,7 @@ async function bulkDelete() {
   if (!ids.length) return;
   if (!confirm('Permanently delete ' + ids.length + ' contacts?\n\nThis cannot be undone.')) return;
   try {
-    const r = await fetch(API_BASE+'/contacts/bulk-delete', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids}) });
+    const r = await fetch(API_BASE+'/contacts/bulk-delete', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({ids}) });
     const d = await r.json();
     if (r.ok) { showToast(d.message, 'success'); clearSelection(); loadContacts(); loadStats(); }
     else showToast('Bulk delete failed: '+(d.detail||'unknown'), 'error');
@@ -261,12 +330,15 @@ async function bulkDelete() {
 async function bulkValidate() {
   const ids = Array.from(selectedIds);
   if (!ids.length) return;
-  if (!confirm('SMTP-validate emails for ' + ids.length + ' contacts?\n\nThis runs in the background.')) return;
+  if (!confirm('Pattern-prove + derive + SMTP-validate emails for ' + ids.length + ' contacts?\n\nThis runs in the background with 15-second spacing between each company.')) return;
   try {
-    const r = await fetch(API_BASE+'/contacts/bulk-validate-emails', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids}) });
+    const r = await fetch(API_BASE+'/contacts/queue-smtp-validation', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({ids}) });
     const d = await r.json();
-    if (r.ok) { showToast(d.message, 'success'); clearSelection(); }
-    else showToast('Validate failed: '+(d.detail||d.message||'unknown'), 'error');
+    if (r.ok) {
+      showToast(d.message + (d.job_id ? ' Job: ' + d.job_id : ''), 'success');
+      clearSelection();
+      if (d.job_id) startEscalateJobPolling(d.job_id);
+    } else showToast('Validate failed: '+(d.detail||d.message||'unknown'), 'error');
   } catch(e) { showToast('Validate error: '+e.message, 'error'); }
 }
 
@@ -275,16 +347,33 @@ function escapeHtml(s) { return s == null ? '' : String(s).replace(/&/g,'&amp;')
 function showToast(msg, type) { const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast toast-'+type+' show'; setTimeout(()=>t.classList.remove('show'), 3500); }
 
 // ── Data loading ──────────────────────────────────────────────────────────
-async function loadStats() { try { const r = await fetch(API_BASE+'/stats',{headers:{'X-LF-Key':API_KEY}}); if (!r.ok) return; const d = await r.json(); document.getElementById('statCompanies').textContent = d.companies||0; document.getElementById('statContacts').textContent = d.contacts||0; document.getElementById('statSessions').textContent = d.sessions||0; } catch(e) {} }
+async function loadStats() { try { const r = await fetch(API_BASE+'/stats',{headers:{'X-LF-Key':requireApiKey()}}); if (!r.ok) return; const d = await r.json(); document.getElementById('statCompanies').textContent = d.companies||0; document.getElementById('statContacts').textContent = d.contacts||0; document.getElementById('statSessions').textContent = d.sessions||0; } catch(e) {} }
 
-async function loadDropdowns() {
-  try {
-    const r = await fetch(API_BASE+'/contacts/dropdowns',{headers:{'X-LF-Key':API_KEY}});
+async function loadDropdowns() { try {
+    const r = await fetch(API_BASE+'/contacts/dropdowns',{headers:{'X-LF-Key':requireApiKey()}});
     if (!r.ok) return;
     const d = await r.json();
     document.getElementById('filterCompany').innerHTML = '<option value="">All Companies</option>' + (d.companies||[]).map(c => '<option value="'+escapeHtml(c)+'">'+escapeHtml(c)+'</option>').join('');
     document.getElementById('filterTitle').innerHTML = '<option value="">All Titles</option>' + (d.titles||[]).map(t => '<option value="'+escapeHtml(t)+'">'+escapeHtml(t)+'</option>').join('');
     document.getElementById('filterCity').innerHTML = '<option value="">All Cities</option>' + (d.cities||[]).map(c => '<option value="'+escapeHtml(c)+'">'+escapeHtml(c)+'</option>').join('');
+    const sessSel = document.getElementById('filterSession');
+    sessSel.innerHTML = '<option value="">All Sessions</option>' +
+      (d.sessions||[]).map(s => '<option value="'+escapeHtml(s.session_key)+'">'+escapeHtml(s.session_key)+' ('+escapeHtml(s.industry||'')+')</option>').join('');
+    // Source dropdown — contacts by source_primary with counts. The LI
+    // Plugin pathway is 'linkedin_plugin'; we also expose an 'other' bucket
+    // (everything that is NOT linkedin_plugin) for quick isolation.
+    const srcSel = document.getElementById('filterSource');
+    const srcs = d.sources || [];
+    const pluginCount = (srcs.find(s => s.value === 'linkedin_plugin') || {}).count || 0;
+    const otherCount = srcs.filter(s => s.value !== 'linkedin_plugin').reduce((a, s) => a + (s.count||0), 0);
+    let srcOpts = '<option value="">All Sources</option>';
+    srcOpts += '<option value="linkedin_plugin">LinkedIn Plugin ('+pluginCount+')</option>';
+    srcOpts += '<option value="other">Other Sources ('+otherCount+')</option>';
+    for (const s of srcs) {
+      if (s.value === 'linkedin_plugin' || s.value === 'unknown') continue;
+      srcOpts += '<option value="'+escapeHtml(s.value)+'">'+escapeHtml(s.label)+' ('+(s.count||0)+')</option>';
+    }
+    srcSel.innerHTML = srcOpts;
   } catch(e) {}
 }
 
@@ -292,6 +381,8 @@ async function loadContacts() {
   const company = document.getElementById('filterCompany').value;
   const title = document.getElementById('filterTitle').value;
   const city = document.getElementById('filterCity').value;
+  const session_key = document.getElementById('filterSession').value;
+  const source = document.getElementById('filterSource').value;
   const compText = document.getElementById('filterCompanyText').value.trim();
   const titleText = document.getElementById('filterTitleText').value.trim();
   const perPage = parseInt(document.getElementById('perPage').value) || 20;
@@ -303,9 +394,11 @@ async function loadContacts() {
   if (titleText && !title) url += '&title='+encodeURIComponent(titleText);
   else if (title) url += '&title='+encodeURIComponent(title);
   if (city) url += '&city='+encodeURIComponent(city);
+  if (session_key) url += '&session_key='+encodeURIComponent(session_key);
+  if (source) url += '&source='+encodeURIComponent(source);
   if (sortBy) url += '&sort='+encodeURIComponent(sortBy);
   try {
-    const r = await fetch(url, {headers:{'X-LF-Key':API_KEY}});
+    const r = await fetch(url, {headers:{'X-LF-Key':requireApiKey()}});
     const data = await r.json();
     allContacts = data.contacts || [];
     renderContacts(applyCurrentSort(), perPage, groupBy);
@@ -321,9 +414,37 @@ function renderContacts(contacts, perPage, groupBy) {
 
   let grouped = {};
   if (groupBy === 'company') { for (const ct of contacts) { const k = ct.company_name||'Unknown'; if (!grouped[k]) grouped[k] = []; grouped[k].push(ct); } }
+  else if (groupBy === 'source') {
+    // Bucket by source_primary. The LI Plugin pathway ('linkedin_plugin')
+    // is always its own bucket; everything else collapses into 'Other Sources'
+    // so the UI cleanly answers "did these come from the LI Plugin tool?".
+    const SRC_LABELS = { linkedin_plugin: 'LinkedIn Plugin', ai: 'AI Research', linkedin: 'LinkedIn (search)', website: 'Website', unknown: 'Unknown' };
+    for (const ct of contacts) {
+      const raw = (ct.source_primary === null || ct.source_primary === undefined || ct.source_primary === '') ? 'unknown' : ct.source_primary;
+      const k = raw === 'linkedin_plugin' ? 'linkedin_plugin' : 'other';
+      if (!grouped[k]) grouped[k] = [];
+      grouped[k].push(ct);
+    }
+    // Preserve a stable, friendly header order: plugin first, then other.
+    const orderedKeys = ['linkedin_plugin', 'other'].filter(k => grouped[k]);
+    const remapped = {};
+    for (const k of orderedKeys) {
+      const label = k === 'linkedin_plugin' ? SRC_LABELS.linkedin_plugin : 'Other Sources';
+      remapped[label] = grouped[k];
+    }
+    grouped = remapped;
+  }
   else { grouped = {'': contacts}; }
 
   const companyKeys = Object.keys(grouped).sort();
+  // When grouping by source, force plugin-first regardless of alpha sort.
+  if (groupBy === 'source') {
+    companyKeys.sort((a, b) => {
+      if (a === 'LinkedIn Plugin') return -1;
+      if (b === 'LinkedIn Plugin') return 1;
+      return a.localeCompare(b);
+    });
+  }
   const total = contacts.length;
   pageInfo.textContent = total + ' contacts' + (total > perPage ? ' (showing '+perPage+')' : '');
 
@@ -336,11 +457,26 @@ function renderContacts(contacts, perPage, groupBy) {
     for (const ct of group) {
       if (count >= maxShow) break;
       count++;
-      // Group header
-      if (count === 1 || (groupBy === 'company' && ct === group[0])) {
+      // Group header — render once per group for 'company' and 'source'
+      // grouping modes. ('none' / flat list only shows a header for the
+      // very first row, which is harmless and matches prior behavior.)
+      if (count === 1 || ((groupBy === 'company' || groupBy === 'source') && ct === group[0])) {
         const hr = document.createElement('tr');
         hr.className = 'company-group-header';
-        hr.innerHTML = '<td colspan="1">&#9654;</td><td colspan="11" style="overflow:visible;">' + escapeHtml(companyName) + ' (' + group.length + ')</td><td style="overflow:visible;"><button class="btn-sm btn-green" onclick="openAddContactForCompany('+companyId+',\''+escapeHtml(companyName).replace(/'/g,"\\'")+'\')" title="Add contact to '+escapeHtml(companyName)+'">+ Add</button></td>';
+        // For source grouping there is no single company to add a contact
+        // to, so omit the per-company "+ Add" button and instead show a
+        // generic source badge.
+        let headerActions = '';
+        if (groupBy === 'source') {
+          const isPlugin = companyName === 'LinkedIn Plugin';
+          const badgeStyle = isPlugin
+            ? 'background:#0a66c233;color:#38bdf8;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.7rem;font-weight:600;'
+            : 'background:#334155;color:#94a3b8;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.7rem;font-weight:600;';
+          headerActions = '<span style="'+badgeStyle+'" title="Contact source pathway">'+(isPlugin ? 'LI Plugin ✓' : 'search/ai')+'</span>';
+        } else if (companyId) {
+          headerActions = '<button class="btn-sm btn-green" onclick="openAddContactForCompany('+companyId+',\''+escapeHtml(companyName).replace(/'/g,"\\'")+'\')" title="Add contact to '+escapeHtml(companyName)+'">+ Add</button>';
+        }
+        hr.innerHTML = '<td colspan="1">&#9654;</td><td colspan="12" style="overflow:visible;">' + escapeHtml(companyName) + ' (' + group.length + ')</td><td style="overflow:visible;">'+headerActions+'</td>';
         tbody.appendChild(hr);
       }
 
@@ -371,14 +507,49 @@ function renderContacts(contacts, perPage, groupBy) {
       // Local badge
       const badge = ct.is_local ? '<span class="badge badge-local">L</span>' : '<span class="badge badge-hq">HQ</span>';
 
+      // Verification badge — strict, evidence-based
+      // No "Found on LinkedIn" badge: we don't get to misrepresent data.
+      // The badge shows the actual evidence state.
+      let verBadge = '';
+      if (ct.pipeline_stage === 'needs_review' || ct.pipeline_stage === 'audit_failed') {
+        verBadge = '<span class="badge" style="background:#ef444433;color:#ef4444;" title="Pipeline stage: '+escapeHtml(ct.pipeline_stage)+'. Click Escalate to re-verify.">&#9888; review</span>';
+      } else if (ct.source_linkedin_verified) {
+        verBadge = '<span class="badge" style="background:#22c55e33;color:#22c55e;" title="LinkedIn URL independently confirmed by SearXNG">&#10003; verified</span>';
+      } else if (ct.ai_title_confidence && ct.ai_title_confidence > 0) {
+        verBadge = '<span class="badge" style="background:#f59e0b33;color:#f59e0b;" title="AI estimate at '+((ct.ai_title_confidence||0)*100).toFixed(0)+'% confidence">~ AI '+((ct.ai_title_confidence||0)*100).toFixed(0)+'%</span>';
+      } else {
+        verBadge = '<span class="badge" style="background:#334155;color:#94a3b8;" title="No independent verification">unverified</span>';
+      }
+
       // LinkedIn
-      const li = ct.linkedin_url ? '<a href="'+escapeHtml(ct.linkedin_url)+'" target="_blank" style="color:#38bdf8;text-decoration:none;" title="'+escapeHtml(ct.linkedin_url)+'">&#128279;</a>' : '<span style="color:#64748b;">—</span>';
+      let li;
+      if (ct.linkedin_url) {
+        li = '<a href="'+escapeHtml(ct.linkedin_url)+'" target="_blank" style="color:#38bdf8;text-decoration:none;" title="'+escapeHtml(ct.linkedin_url)+'">&#128279;</a>';
+      } else {
+        const searchName = escapeHtml(ct.full_name||'').replace(/"/g,'&quot;');
+        const searchCompany = escapeHtml(ct.company_name||'').replace(/"/g,'&quot;');
+        li = '<button class="btn-sm btn-slate" onclick="searchLinkedIn(\''+searchName.replace(/'/g,"\\'")+'\',\''+searchCompany.replace(/'/g,"\\'")+'\')" title="Search LinkedIn for this person">&#128269;</button>';
+      }
 
       // Title
       const titleDisplay = ct.title || '-';
-
       // Pattern confidence string
       const patConfStr = pat ? (patConf*100).toFixed(0)+'%' : '';
+      // Source provenance badge — small tag in the Name cell so plugin
+      // contacts are recognizable at a glance in any grouping mode.
+      const sp = (ct.source_primary === null || ct.source_primary === undefined) ? '' : String(ct.source_primary);
+      let srcBadge = '';
+      if (sp === 'linkedin_plugin') {
+        srcBadge = ' <span class="badge" style="background:#0a66c233;color:#38bdf8;margin-left:0.3rem;" title="Came from the LinkedIn Plugin tool (pushed profile via browser extension)">LI&#9733;</span>';
+      } else if (sp === 'ai') {
+        srcBadge = ' <span class="badge" style="background:#8b5cf633;color:#a78bfa;margin-left:0.3rem;" title="Source: AI research">AI</span>';
+      } else if (sp === 'linkedin') {
+        srcBadge = ' <span class="badge" style="background:#334155;color:#94a3b8;margin-left:0.3rem;" title="Source: LinkedIn search (SearXNG)">LI</span>';
+      } else if (sp === 'website') {
+        srcBadge = ' <span class="badge" style="background:#22c55e33;color:#22c55e;margin-left:0.3rem;" title="Source: company website">WEB</span>';
+      } else if (sp) {
+        srcBadge = ' <span class="badge" style="background:#334155;color:#94a3b8;margin-left:0.3rem;" title="Source: '+escapeHtml(sp)+'">'+escapeHtml(sp.substring(0,4).toUpperCase())+'</span>';
+      }
 
       // Checkbox
       const cbChecked = selectedIds.has(ct.id) ? ' checked' : '';
@@ -386,17 +557,20 @@ function renderContacts(contacts, perPage, groupBy) {
       // Action buttons — compact icons with tooltips, no spaces between
       let actions = '';
       actions += '<button class="btn-sm btn-green" onclick="openEdit('+ct.id+')" title="Edit contact">&#9998;</button>';
-      actions += '<button class="btn-sm btn-red" onclick="deleteContact('+ct.id+')" title="Permanently delete contact">&#10005;</button>';
-      actions += '<button class="btn-sm btn-orange" onclick="exportContact('+ct.id+')" title="Export as CSV">&#8681;</button>';
-      if (!ct.email && ct.company_email_pattern) {
+  actions += '<button class="btn-sm btn-red" onclick="deleteContact('+ct.id+')" title="Permanently delete contact">&#10005;</button>';
+  actions += '<button class="btn-sm btn-purple" onclick="escalateContact('+ct.id+')" title="Hardened escalator: AI + cascading LinkedIn search + independent URL verification">&#9889;</button>';
+  if (!ct.email && ct.company_email_pattern) {
         actions += '<button class="btn-sm btn-blue" onclick="deriveEmail('+ct.id+')" title="Derive email from pattern">&#9993;</button>';
       }
       actions += '<button class="btn-sm btn-purple" onclick="validateEmail('+ct.id+')" title="SMTP-validate this email">&#9889;</button>';
       actions += '<button class="btn-sm btn-blue" onclick="verifyTitle('+ct.id+')" title="AI-verify title" style="background:#8b5cf6;">&#9733;</button>';
+      if (ct.email) {
+        actions += '<button class="btn-sm btn-slate" onclick="openManualValidate('+ct.id+')" title="Manual override: I know this works (or doesn&#39;t)">&#9776;</button>';
+      }
 
       tr.innerHTML =
         '<td><input type="checkbox" class="ct-cb" data-id="'+ct.id+'"'+cbChecked+' /></td>'
-        + '<td style="font-weight:600;" title="'+escapeHtml(ct.full_name)+'">'+escapeHtml(ct.full_name)+'</td>'
+        + '<td style="font-weight:600;" title="'+escapeHtml(ct.full_name)+'">'+escapeHtml(ct.full_name)+srcBadge+'</td>'
         + '<td title="'+escapeHtml(ct.title||'')+'">'+escapeHtml(titleDisplay)+'</td>'
         + '<td title="'+escapeHtml(ct.company_name||'')+'">'+escapeHtml(ct.company_name||'')+'</td>'
         + '<td>'+emailHtml+'</td>'
@@ -405,6 +579,7 @@ function renderContacts(contacts, perPage, groupBy) {
         + '<td style="color:#94a3b8;font-size:0.75rem;">'+patConfStr+'</td>'
         + '<td>'+badge+'</td>'
         + '<td style="text-align:center;">'+conf+'</td>'
+        + '<td>'+verBadge+'</td>'
         + '<td>'+li+'</td>'
         + '<td style="overflow:visible;"><div class="action-group">'+actions+'</div></td>';
 
@@ -416,10 +591,16 @@ function renderContacts(contacts, perPage, groupBy) {
   }
 }
 
+function searchLinkedIn(name, company) {
+  const q = encodeURIComponent([name, company].filter(Boolean).join(' '));
+  const url = 'https://www.linkedin.com/search/results/people/?keywords=' + q;
+  window.open(url, '_blank');
+}
+
 // ── Contact actions ───────────────────────────────────────────────────────
 async function deriveEmail(contactId) {
   try {
-    const r = await fetch(API_BASE+'/contact/'+contactId+'/derive-email', { method:'POST', headers:{'X-LF-Key':API_KEY} });
+    const r = await fetch(API_BASE+'/contact/'+contactId+'/derive-email', { method:'POST', headers:{'X-LF-Key':requireApiKey()} });
     const d = await r.json();
     if (d.status === 'ok') { showToast('Email derived: '+d.email, 'success'); loadContacts(); }
     else showToast(d.reason || 'Failed to derive email', 'error');
@@ -428,46 +609,292 @@ async function deriveEmail(contactId) {
 
 async function validateEmail(contactId) {
   try {
-    const r = await fetch(API_BASE+'/contact/'+contactId+'/validate-email', { method:'POST', headers:{'X-LF-Key':API_KEY} });
+    const r = await fetch(API_BASE+'/contacts/queue-smtp-validation', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({ids: [contactId]}) });
     const d = await r.json();
-    if (d.status === 'ok') { showToast('Email: '+d.email+' → '+d.validation, 'success'); loadContacts(); }
-    else showToast(d.message || d.detail || 'Validation failed', 'error');
+    if (r.ok) {
+      showToast((d.message || 'Queued SMTP validation') + (d.job_id ? ' Job: ' + d.job_id : ''), 'success');
+      if (d.job_id) startEscalateJobPolling(d.job_id);
+    } else showToast(d.message || d.detail || 'Validation failed', 'error');
   } catch(e) { showToast('Validate error: '+e.message, 'error'); }
 }
 
-async function verifyTitle(contactId) {
-  showToast('AI verifying title...', 'info');
+async function verifyContact(contactId) {
+  showToast('AI verifying contact...', 'info');
   try {
-    const r = await fetch(API_BASE+'/contact/'+contactId+'/verify-title', { method:'POST', headers:{'X-LF-Key':API_KEY} });
+    const r = await fetch(API_BASE+'/contact/'+contactId+'/verify', { method:'POST', headers:{'X-LF-Key':requireApiKey()} });
     const d = await r.json();
-    if (d.status === 'ok') { showToast('Title: "'+d.previous_title+'" → "'+d.title+'" ('+(d.confidence*100).toFixed(0)+'%)', 'success'); loadContacts(); }
-    else showToast(d.reason || 'Title verification failed', 'error');
+    if (d.status === 'ok') {
+      let msg = 'Verified: '+(d.previous_title||'—')+' → '+d.title;
+      if (d.company_changed) msg += ' | moved to '+d.company_name;
+      if (d.linkedin_url) msg += ' | LinkedIn found';
+      if (d.email) msg += ' | email updated';
+      msg += ' ('+(d.confidence*100).toFixed(0)+'% conf)';
+      showToast(msg, 'success');
+      loadContacts();
+    } else {
+      showToast(d.reason || 'Verification failed', 'error');
+    }
   } catch(e) { showToast('Verify error: '+e.message, 'error'); }
+}
+
+// ── Hardened escalator: single-contact ─────────────────────────────────
+let escalateContactPollTimer = null;
+let escalateContactCurrentId = null;
+
+async function escalateContact(contactId) {
+  if (escalateContactPollTimer) clearInterval(escalateContactPollTimer);
+  escalateContactCurrentId = contactId;
+  showEscalatePanel();
+  resetEscalatePanel();
+  appendEscalateLog('start', 'start', `Escalating contact ${contactId}`, '');
+  setEscalateCurrent('Starting hardened escalator...');
+  setEscalateStatus('running');
+  setEscalateProgress(0, 1);
+  try {
+    const r = await fetch(API_BASE+'/contact/'+contactId+'/escalate', { method:'POST', headers:{'X-LF-Key':requireApiKey()} });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      renderEscalateResult(d);
+    } else {
+      appendEscalateLog('error', 'error', d.detail || 'Escalator failed', '');
+      setEscalateStatus('failed');
+    }
+  } catch(e) {
+    appendEscalateLog('error', 'error', 'Network error: '+e.message, '');
+    setEscalateStatus('failed');
+  }
+  loadContacts();
+}
+
+// ── Hardened escalator: bulk ────────────────────────────────────────────
+let escalateJobPollTimer = null;
+let escalateCurrentJobId = null;
+const ESCALATE_JOB_LS_KEY = 'escalate_job_id';
+
+async function bulkVerifyContacts() {
+  const ids = Array.from(selectedIds);
+  if (!ids.length) return;
+  if (!confirm('Run hardened verification on '+ids.length+' contacts?\n\nThis uses the full escalator: AI research + cascading LinkedIn search + independent URL verification + AI refinement. Only confirmed data is written. Contacts may move to a different company if the AI finds they changed jobs.')) return;
+  try {
+    const r = await fetch(API_BASE+'/contacts/verify-batch', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({contact_ids: ids}) });
+    const d = await r.json();
+    if (r.ok) {
+      escalateCurrentJobId = d.job_id;
+      try { localStorage.setItem(ESCALATE_JOB_LS_KEY, d.job_id); } catch(e) {}
+      showEscalatePanel();
+      resetEscalatePanel();
+      setEscalateStatus('running');
+      setEscalateProgress(0, d.total);
+      setEscalateCurrent('Job '+d.job_id+' started — '+d.total+' contacts queued');
+      appendEscalateLog('start', 'start', 'Bulk escalator started', d.message || '');
+      startEscalateJobPolling(d.job_id);
+      clearSelection();
+    } else {
+      showToast(d.detail || 'Escalator-batch failed', 'error');
+    }
+  } catch(e) { showToast('Escalator-batch error: '+e.message, 'error'); }
+}
+
+function startEscalateJobPolling(jobId) {
+  if (escalateJobPollTimer) clearInterval(escalateJobPollTimer);
+  const poll = async () => {
+    try {
+      const r = await fetch(API_BASE+'/discover-job/'+encodeURIComponent(jobId), { headers: {'X-LF-Key': requireApiKey()} });
+      if (!r.ok) return;
+      const d = await r.json();
+      renderEscalateJobProgress(d);
+      if (d.status === 'completed' || d.status === 'failed') {
+        clearInterval(escalateJobPollTimer);
+        escalateJobPollTimer = null;
+        try { localStorage.removeItem(ESCALATE_JOB_LS_KEY); } catch(e) {}
+        if (d.status === 'completed') {
+          appendEscalateLog('done', 'done', 'Job complete', JSON.stringify(d.results || {}).slice(0,200));
+          setEscalateStatus('completed');
+          loadContacts();
+        } else {
+          setEscalateStatus('failed');
+        }
+      }
+    } catch(e) { console.warn('escalate poll error', e); }
+  };
+  poll();
+  escalateJobPollTimer = setInterval(poll, 2000);
+}
+
+function renderEscalateJobProgress(job) {
+  setEscalateProgress(job.done || 0, job.total || 0);
+  const current = job.current_stage || '';
+  // current_stage is a stage label; for verify jobs it's typically
+  // the last method label. Translate common values.
+  const friendly = friendlyStage(current);
+  setEscalateCurrent(friendly);
+  // Append new job-level events since last render
+  const log = Array.isArray(job.stage_log) ? job.stage_log : [];
+  if (renderEscalateJobProgress.lastLogLen === undefined) renderEscalateJobProgress.lastLogLen = 0;
+  for (let i = renderEscalateJobProgress.lastLogLen; i < log.length; i++) {
+    const e = log[i];
+    if (e && e.stage) appendEscalateLog(e.at, e.stage, e.label || e.stage, e.detail || '');
+  }
+  renderEscalateJobProgress.lastLogLen = log.length;
+  // Per-item events
+  for (const it of (job.items || [])) {
+    if (it.events && Array.isArray(it.events)) {
+      const key = 'item_'+it.id;
+      if (renderEscalateJobProgress[key] === undefined) renderEscalateJobProgress[key] = 0;
+      for (let i = renderEscalateJobProgress[key]; i < it.events.length; i++) {
+        const e = it.events[i];
+        appendEscalateLog(e.at, e.stage, `[ct ${it.contact_id}] ${e.label || ''}`, e.detail || '');
+      }
+      renderEscalateJobProgress[key] = it.events.length;
+    }
+  }
+}
+
+function friendlyStage(stage) {
+  if (!stage) return '';
+  if (stage === 'queued') return 'Queued — waiting to start';
+  if (stage === 'completed') return 'All contacts processed';
+  if (stage === 'failed') return 'Job failed';
+  if (stage === 'start') return 'Processing next contact';
+  return stage.replace(/_/g, ' ');
+}
+
+function renderEscalateResult(d) {
+  setEscalateProgress(1, 1);
+  setEscalateStatus(d.success ? 'completed' : 'failed');
+  if (d.evidence) {
+    for (const [k, v] of Object.entries(d.evidence)) {
+      if (v && v.value !== null) {
+        appendEscalateLog('', 'write', `${k} = ${v.value} (conf ${(v.confidence||0).toFixed(2)}, ${v.method})`, '');
+      } else if (v && v.method) {
+        appendEscalateLog('', 'M4', `${k}: rejected (${v.method}, conf ${(v.confidence||0).toFixed(2)})`, '');
+      }
+    }
+  }
+  if (d.rejected && d.rejected.length) {
+    for (const r of d.rejected) {
+      appendEscalateLog('', 'skipped', `${r.field} rejected: ${r.reason}`, '');
+    }
+  }
+  if (d.moved) {
+    appendEscalateLog('', 'relocate', `Moved to ${d.new_company_name}`, '');
+  }
+  if (d.cascade && d.cascade.attempts) {
+    for (const a of d.cascade.attempts) {
+      appendEscalateLog('', 'M2', `cascade ${a.method}: ${a.hits||0} hits`, a.query || '');
+    }
+  }
+  setEscalateCurrent(`Done. Confidence ${(d.overall_confidence||0).toFixed(2)}. Wrote ${(d.written||[]).join(', ') || 'nothing'}.`);
+}
+
+function showEscalatePanel() {
+  const p = document.getElementById('escalatePanel');
+  if (p) p.style.display = 'block';
+}
+function closeEscalatePanel() {
+  const p = document.getElementById('escalatePanel');
+  if (p) p.style.display = 'none';
+  if (escalateJobPollTimer) { clearInterval(escalateJobPollTimer); escalateJobPollTimer = null; }
+  try { localStorage.removeItem(ESCALATE_JOB_LS_KEY); } catch(e) {}
+}
+function resetEscalatePanel() {
+  document.getElementById('escalateBar').className = 'escalate-bar-fill';
+  document.getElementById('escalateBar').style.width = '0%';
+  document.getElementById('escalateCount').textContent = '0 / 0';
+  document.getElementById('escalateCurrent').textContent = 'Starting...';
+  document.getElementById('escalateStatus').className = 'escalate-status';
+  document.getElementById('escalateStatus').textContent = 'running';
+  document.getElementById('escalateLog').innerHTML = '';
+  renderEscalateJobProgress.lastLogLen = 0;
+  // Clear per-item counters
+  for (const k of Object.keys(renderEscalateJobProgress)) {
+    if (k !== 'lastLogLen' && k.startsWith('item_')) delete renderEscalateJobProgress[k];
+  }
+}
+function setEscalateStatus(s) {
+  const el = document.getElementById('escalateStatus');
+  el.className = 'escalate-status' + (s && s !== 'running' ? ' '+s : '');
+  el.textContent = s;
+}
+function setEscalateCurrent(text) {
+  document.getElementById('escalateCurrent').textContent = text;
+}
+function setEscalateProgress(done, total) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const bar = document.getElementById('escalateBar');
+  bar.style.width = pct + '%';
+  bar.className = 'escalate-bar-fill';
+  document.getElementById('escalateCount').textContent = done + ' / ' + total;
+}
+function appendEscalateLog(ts, stage, label, detail) {
+  const log = document.getElementById('escalateLog');
+  if (!log) return;
+  const line = document.createElement('div');
+  line.className = 'escalate-log-line';
+  const tsShort = (ts || new Date().toISOString()).substring(11, 19);
+  line.innerHTML = '<span class="ts">'+tsShort+'</span><span class="tag '+stage+'">'+stage+'</span><span class="label">'+escapeHtml(label||'')+'</span>' + (detail ? '<span class="detail">'+escapeHtml(detail)+'</span>' : '');
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+  // Cap at 300 lines
+  while (log.children.length > 300) log.removeChild(log.firstChild);
+}
+
+// Resume polling on page load if a job was running
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const stored = localStorage.getItem(ESCALATE_JOB_LS_KEY);
+    if (stored) {
+      escalateCurrentJobId = stored;
+      showEscalatePanel();
+      resetEscalatePanel();
+      setEscalateStatus('running');
+      startEscalateJobPolling(stored);
+    }
+  } catch(e) {}
+});
+
+function exportVisibleContacts() {
+  // Phase 5: only export contacts that are safe to email.
+  // Server-side export already enforces these filters; the client-side button
+  // must match that behavior so users don't accidentally download unvalidated
+  // derived emails.
+  const requiredStatus = 'Okay to Send';
+  const exportable = allContacts.filter(ct =>
+    ct.smtp_validation_status === requiredStatus &&
+    (ct.email_ready_for_export === 1 || ct.email_ready_for_export === true)
+  );
+  const rows = [['Full Name','Title','Company','Email','LinkedIn URL','Pattern','Confidence Score','Is Local','Data Provenance']];
+  for (const ct of exportable) {
+    rows.push([ct.full_name||'',ct.title||'',ct.company_name||'',ct.email||'',ct.linkedin_url||'',ct.company_email_pattern||'',(ct.confidence_score||0).toFixed(2),ct.is_local?'YES':'NO',ct.data_provenance||'']);
+  }
+  const csv = rows.map(e=>e.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'lf_contacts_export.csv';
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  showToast('Exported '+exportable.length+' contacts (filtered to validated, exportable emails)', 'success');
+}
+
+async function verifyTitle(contactId) {
+  // Kept for backward compatibility; now delegates to full verify
+  return verifyContact(contactId);
 }
 
 async function deleteContact(id) {
   const ct = allContacts.find(c => c.id === id);
   const name = ct ? ct.full_name : 'this contact';
   if (!confirm('Permanently delete "'+name+'"?')) return;
-  const r = await fetch(API_BASE+'/contact/'+id, { method:'DELETE', headers:{'X-LF-Key':API_KEY} });
+  const r = await fetch(API_BASE+'/contact/'+id, { method:'DELETE', headers:{'X-LF-Key':requireApiKey()} });
   if (r.ok) { showToast('Contact deleted', 'success'); loadContacts(); loadStats(); }
   else showToast('Failed to delete', 'error');
 }
 
-async function exportContact(id) {
-  const ct = allContacts.find(c => c.id === id);
-  if (!ct) return;
-  const rows = [['Full Name','Title','Company','Email','LinkedIn URL','Pattern','Confidence Score','Is Local','Data Provenance']];
-  rows.push([ct.full_name||'',ct.title||'',ct.company_name||'',ct.email||'',ct.linkedin_url||'',ct.company_email_pattern||'',(ct.confidence_score||0).toFixed(2),ct.is_local?'YES':'NO',ct.data_provenance||'']);
-  const csv = rows.map(e=>e.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const blob = new Blob([csv],{type:'text/csv'});
-  const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'contact_'+id+'.csv';
-  document.body.appendChild(link); link.click(); document.body.removeChild(link);
-  showToast('Exported '+ct.full_name, 'success');
+async function exportSingleContact(id) {
+  // Per-contact export is now available through the global Export CSV button; kept for compatibility.
+  exportVisibleContacts();
 }
 
 // ── Modals ────────────────────────────────────────────────────────────────
-async function loadCompanyOptions() { if (companyOptions.length > 0) return; const r = await fetch(API_BASE+'/companies?limit=500',{headers:{'X-LF-Key':API_KEY}}); const d = await r.json(); companyOptions = d.companies||[]; }
+async function loadCompanyOptions() { if (companyOptions.length > 0) return; const r = await fetch(API_BASE+'/companies?limit=500',{headers:{'X-LF-Key':requireApiKey()}}); const d = await r.json(); companyOptions = d.companies||[]; }
 
 async function openEdit(id) {
   const ct = allContacts.find(c => c.id === id);
@@ -489,7 +916,7 @@ async function saveEdit() {
   const companyId = document.getElementById('editCompany').value;
   const body = { full_name: document.getElementById('editName').value.trim(), title: document.getElementById('editTitle').value.trim(), linkedin_url: document.getElementById('editLinkedIn').value.trim(), manual_notes: document.getElementById('editNotes').value.trim() };
   if (companyId) body.company_id = parseInt(companyId);
-  const r = await fetch(API_BASE+'/contact/'+currentEditId, { method:'PATCH', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify(body) });
+  const r = await fetch(API_BASE+'/contact/'+currentEditId, { method:'PATCH', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify(body) });
   if (r.ok) { showToast('Contact updated', 'success'); closeEditModal(); loadContacts(); }
   else showToast('Failed to update', 'error');
 }
@@ -498,7 +925,7 @@ let addCompanyId = null;
 async function openAddContact() {
   addCompanyId = null;
   const sel = document.getElementById('addCompany');
-  const r = await fetch(API_BASE+'/companies?limit=500',{headers:{'X-LF-Key':API_KEY}});
+  const r = await fetch(API_BASE+'/companies?limit=500',{headers:{'X-LF-Key':requireApiKey()}});
   const d = await r.json();
   sel.innerHTML = '<option value="">— Select Company —</option>' + (d.companies||[]).map(c => '<option value="'+c.id+'">'+escapeHtml(c.name)+' ('+escapeHtml(c.city||'')+', '+escapeHtml(c.state||'')+')</option>').join('');
   sel.value = '';
@@ -512,7 +939,7 @@ async function openAddContactForCompany(companyId, companyName) {
   addCompanyId = companyId;
   const sel = document.getElementById('addCompany');
   if (sel.options.length <= 1) {
-    const r = await fetch(API_BASE+'/companies?limit=500',{headers:{'X-LF-Key':API_KEY}});
+    const r = await fetch(API_BASE+'/companies?limit=500',{headers:{'X-LF-Key':requireApiKey()}});
     const d = await r.json();
     sel.innerHTML = '<option value="">— Select Company —</option>' + (d.companies||[]).map(c => '<option value="'+c.id+'">'+escapeHtml(c.name)+' ('+escapeHtml(c.city||'')+', '+escapeHtml(c.state||'')+')</option>').join('');
   }
@@ -534,7 +961,7 @@ async function saveAddContact() {
   if (!name) { showToast('Name is required', 'error'); return; }
   if (!title) { showToast('Title is required', 'error'); return; }
   try {
-    const r = await fetch(API_BASE+'/company/'+companyId+'/contact', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({full_name:name,title,linkedin_url:linkedin,notes}) });
+    const r = await fetch(API_BASE+'/company/'+companyId+'/contact', { method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({full_name:name,title,linkedin_url:linkedin,notes}) });
     const d = await r.json();
     if (d.status === 'ok') { showToast('Contact added', 'success'); closeAddModal(); loadContacts(); loadStats(); }
     else showToast(d.detail || 'Failed to add', 'error');
@@ -544,7 +971,58 @@ async function saveAddContact() {
 document.getElementById('addModal').addEventListener('click', function(e) { if (e.target === this) closeAddModal(); });
 document.getElementById('editModal').addEventListener('click', function(e) { if (e.target === this) closeEditModal(); });
 
-loadStats(); loadDropdowns(); loadContacts();
+// ── Manual Validate (Phase 1 / t1.4) ────────────────────────────────────────
+let manualValidateCurrentId = null;
+
+function openManualValidate(contactId) {
+  const ct = allContacts.find(c => c.id === contactId);
+  if (!ct) return;
+  if (!ct.email) { showToast('Contact has no email', 'error'); return; }
+  manualValidateCurrentId = contactId;
+  document.getElementById('manualValidateContact').textContent = ct.full_name || '';
+  document.getElementById('manualValidateEmail').textContent = ct.email;
+  document.getElementById('manualValidateReason').value = '';
+  document.getElementById('manualValidateModal').classList.add('active');
+}
+function closeManualValidate() {
+  document.getElementById('manualValidateModal').classList.remove('active');
+  manualValidateCurrentId = null;
+}
+async function submitManualValidate(status) {
+  if (!manualValidateCurrentId) return;
+  const reason = document.getElementById('manualValidateReason').value.trim();
+  if (!reason) { showToast('Reason is required (audit log)', 'error'); return; }
+  const verb = status === 'valid' ? 'Marking valid' : 'Marking invalid';
+  showToast(verb + '...', 'info');
+  try {
+    const r = await fetch(API_BASE+'/contact/'+manualValidateCurrentId+'/manual-validate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()},
+      body:JSON.stringify({ status, reason }),
+    });
+    const d = await r.json();
+    if (r.ok) {
+      const label = status === 'valid' ? 'Marked valid' : 'Marked invalid';
+      showToast(label + ' (manual override, conf 1.0)', 'success');
+      closeManualValidate();
+      loadContacts();
+    } else {
+      showToast(d.detail || 'Manual validate failed', 'error');
+    }
+  } catch(e) { showToast('Error: '+e.message, 'error'); }
+}
+document.getElementById('manualValidateModal').addEventListener('click', function(e) { if (e.target === this) closeManualValidate(); });
+
+(async function bootstrap() {
+  try {
+    await initApiKey();
+    if (apiKeyReady()) {
+      loadStats(); loadDropdowns(); loadContacts();
+    }
+  } catch (e) {
+    showToast('Failed to initialize page: ' + e.message, 'error');
+  }
+})();
 </script>
 </body>
 </html>

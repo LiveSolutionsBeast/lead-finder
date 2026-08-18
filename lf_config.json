@@ -1,5 +1,5 @@
 {
-  "google_maps_api_key": "AIzaSyDKlgLZnYivXEEsvPFCIIcKG465Uz5sYdU",
+  "google_maps_api_key": "",
   "google_maps_api_key_envvar": "GOOGLE_MAPS_API_KEY",
   "searxng_url": "http://127.0.0.1:8888",
   "searxng_query_url": "http://127.0.0.1:8888/search?q=<query>&format=json",
@@ -11,15 +11,23 @@
   "serpapi_api_key": "",
   "brave_search_api_key": "",
   "brave_search_monthly_limit": 1000,
+  "serpapi_api_key": "",
   "serpapi_monthly_limit": 250,
-  "search_only_free": true,
+  "tavily_api_key": "",
+  "tavily_monthly_limit": 1000,
+  "exa_api_key": "",
+  "exa_monthly_limit": 1000,
+  "firecrawl_api_key": "",
+  "firecrawl_monthly_limit": 500,
+  "serper_api_key": "",
+  "serper_limit": 2500,
+  "search_only_free": false,
   "search_use_pipeline": true,
   "pixelrag_enabled": true,
-    "pixelrag_url": "http://127.0.0.1:30001",
-    "pixelrag_query_url": "http://127.0.0.1:30001/search",
-    "pixelrag_screenshot_url": "http://127.0.0.1:30001/screenshot",
-    "pixelrag_extract_url": "http://127.0.0.1:30001/extract",
-
+  "pixelrag_url": "http://127.0.0.1:30001",
+  "pixelrag_query_url": "http://127.0.0.1:30001/search",
+  "pixelrag_screenshot_url": "http://127.0.0.1:30001/screenshot",
+  "pixelrag_extract_url": "http://127.0.0.1:30001/extract",
   "rate_limits": {
     "text_search_delay": 1.5,
     "details_delay": 1.0,
@@ -30,12 +38,16 @@
   "ai_cloud_model_primary": "minimax-m3:cloud",
   "ai_cloud_model_fallback_1": "deepseek-v4-pro:cloud",
   "ai_cloud_model_fallback_2": "deepseek-v4-flash:cloud",
+  "ai_agent_verify_model": "deepseek-v4-flash:cloud",
+  "ai_agent_verify_refine_model": "deepseek-v4-pro:cloud",
+  "agent_verify_concurrency": 2,
   "ai_enrichment_enabled": true,
   "ai_sanity_check_enabled": true,
   "ai_timeout_seconds": 30,
-  "lf_api_key": "lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6",
+  "lf_api_key": "",
+  "lf_api_key_envvar": "LF_API_KEY",
   "email_validation": {
-    "enabled": false,
+    "enabled": true,
     "max_per_batch": 200,
     "delay_min_seconds": 0.5,
     "delay_max_seconds": 1.5,
@@ -43,8 +55,13 @@
     "smtp_timeout": 10,
     "use_starttls": true,
     "cache_ttl_days": 7,
-    "auto_validate_on_derive": false,
+    "auto_validate_on_derive": true,
+    "rotate_sender_identity": false,
+    "sender_domains": [
+      "validator.livesolutionsnow.com"
+    ],
     "ehlo_hostname": "validator.livesolutionsnow.com",
-    "mail_from": "probe@validator.livesolutionsnow.com"
+    "mail_from": "probe@validator.livesolutionsnow.com",
+    "send_throttle_seconds": 15.0
   }
 }
