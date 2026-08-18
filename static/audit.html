@@ -74,7 +74,27 @@ input[type="checkbox"]{accent-color:#38bdf8;width:16px;height:16px;cursor:pointe
 .webq td:nth-child(5),.webq th:nth-child(5){width:15%}
 .webq td:nth-child(6),.webq th:nth-child(6){width:10%}
 .webq td:nth-child(7),.webq th:nth-child(7){width:20%;overflow:visible}
+.plugin-pushes td:nth-child(1),.plugin-pushes th:nth-child(1){width:22%}
+.plugin-pushes td:nth-child(2),.plugin-pushes th:nth-child(2){width:10%}
+.plugin-pushes td:nth-child(3),.plugin-pushes th:nth-child(3){width:25%}
+.plugin-pushes td:nth-child(4),.plugin-pushes th:nth-child(4){width:18%}
+.plugin-pushes td:nth-child(5),.plugin-pushes th:nth-child(5){width:12%}
+.plugin-pushes td:nth-child(6),.plugin-pushes th:nth-child(6){width:13%}
 .action-group{display:inline-flex;gap:2px;flex-wrap:nowrap;align-items:center}
+/* AI enrichment progress panel (shared with companies/sessions pages) */
+.progress-panel{display:none;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem}
+.progress-panel.active{display:block}
+.progress-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem}
+.progress-title{font-size:0.9rem;font-weight:600;color:#38bdf8}
+.progress-status{display:inline-block;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600;text-transform:uppercase}
+.progress-status.running{background:#38bdf833;color:#38bdf8}
+.progress-status.completed{background:#22c55e33;color:#22c55e}
+.progress-status.failed{background:#ef444433;color:#ef4444}
+.progress-bar-bg{height:8px;background:#334155;border-radius:4px;overflow:hidden;margin-bottom:0.5rem}
+.progress-bar-fill{height:100%;background:#38bdf8;width:0%;transition:width 0.3s;border-radius:4px}
+.progress-bar-fill.completed{background:#22c55e}
+.progress-bar-fill.failed{background:#ef4444}
+.progress-meta{display:flex;justify-content:space-between;font-size:0.8rem;color:#94a3b8;gap:1rem}
 </style>
 </head>
 <body>
@@ -85,6 +105,7 @@ input[type="checkbox"]{accent-color:#38bdf8;width:16px;height:16px;cursor:pointe
 <a href="/finder/companies">Companies</a>
 <a href="/finder/contacts">Contacts</a>
 <a href="/finder/emails">&#9993; Email Validation</a>
+<a href="/finder/extension">&#9889; Chrome Ext.</a>
 <a href="/finder/audit" class="active">Audit</a>
 <span style="margin-left:auto;display:flex;gap:0.5rem;align-items:center;font-size:0.8rem;">
   <span style="color:#22c55e;">P1-P5 ✓</span>
@@ -93,6 +114,12 @@ input[type="checkbox"]{accent-color:#38bdf8;width:16px;height:16px;cursor:pointe
 </div>
 
 <div class="stats-grid" id="auditStats"></div>
+
+<div id="enrichProgress" class="progress-panel">
+<div class="progress-header"><span class="progress-title">AI Enrichment</span><span id="enrichStatus" class="progress-status running">running</span></div>
+<div class="progress-bar-bg"><div id="enrichBar" class="progress-bar-fill"></div></div>
+<div class="progress-meta"><span id="enrichStep">Starting...</span><span id="enrichCount">0 / 0</span></div>
+</div>
 
 <div class="card">
 <h2>Actions</h2>
@@ -183,11 +210,29 @@ input[type="checkbox"]{accent-color:#38bdf8;width:16px;height:16px;cursor:pointe
 </div>
 </div>
 
+<!-- Bucket 5: LinkedIn Plugin Pushes (Phase 3 / t3.3) -->
+<div class="card">
+<h2>LinkedIn Plugin Pushes (Last 50)</h2>
+<div class="hint" style="color:#94a3b8;font-size:0.8rem;margin-bottom:0.5rem;">Every LinkedIn profile pushed via the Chrome extension lands here. Read-only — for the full audit trail see <code>pending_pushes</code> in the DB.</div>
+<div class="table-wrap">
+<table class="plugin-pushes">
+<thead><tr>
+<th>When</th>
+<th>User</th>
+<th>LinkedIn Slug</th>
+<th>Action</th>
+<th>Contact</th>
+<th>Company</th>
+</tr></thead>
+<tbody id="pluginPushesTable"><tr><td colspan="6" class="empty-msg">Loading…</td></tr></tbody>
+</table>
+</div>
 </div>
 
+</div>
+
+<script src="/api-key-loader.js"></script>
 <script>
-const API_BASE = '/api';
-const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 
 // ── Selection state per bucket ──
 const selections = { notTitle: new Set(), lowConf: new Set(), noPat: new Set(), webq: new Set() };
@@ -264,19 +309,19 @@ function companyActions(c, bucket) {
 // ── Single item actions ──
 async function deleteContactFromAudit(id, name) {
   if (!confirm('Permanently delete contact "'+name+'"?')) return;
-  const r = await fetch(API_BASE+'/contact/'+id, {method:'DELETE', headers:{'X-LF-Key':API_KEY}});
+  const r = await fetch(API_BASE+'/contact/'+id, {method:'DELETE', headers:{'X-LF-Key':requireApiKey()}});
   if (r.ok) { loadAudit(); } else { alert('Delete failed'); }
 }
 
 async function deleteCompanyFromAudit(id, name) {
   if (!confirm('Permanently delete company "'+name+'"?')) return;
-  const r = await fetch(API_BASE+'/company/'+id, {method:'DELETE', headers:{'X-LF-Key':API_KEY}});
+  const r = await fetch(API_BASE+'/company/'+id, {method:'DELETE', headers:{'X-LF-Key':requireApiKey()}});
   if (r.ok) { loadAudit(); } else { alert('Delete failed'); }
 }
 
 async function verifySingleTitle(contactId) {
   try {
-    const r = await fetch(API_BASE+'/contact/'+contactId+'/verify-title', {method:'POST', headers:{'X-LF-Key':API_KEY}});
+    const r = await fetch(API_BASE+'/contact/'+contactId+'/verify-title', {method:'POST', headers:{'X-LF-Key':requireApiKey()}});
     const d = await r.json();
     if (d.status === 'ok') { loadAudit(); }
   } catch(e) { alert('Verify failed: '+e.message); }
@@ -284,7 +329,7 @@ async function verifySingleTitle(contactId) {
 
 async function discoverPattern(companyId) {
   try {
-    const r = await fetch(API_BASE+'/company/'+companyId+'/discover-email-pattern', {method:'POST', headers:{'X-LF-Key':API_KEY}});
+    const r = await fetch(API_BASE+'/company/'+companyId+'/discover-email-pattern', {method:'POST', headers:{'X-LF-Key':requireApiKey()}});
     const d = await r.json();
     if (d.status === 'ok' || d.pattern) { loadAudit(); }
   } catch(e) { alert('Discover failed: '+e.message); }
@@ -292,7 +337,7 @@ async function discoverPattern(companyId) {
 
 async function clearWebsite(companyId) {
   if (!confirm('Clear this company\'s website? It will be blank.')) return;
-  const r = await fetch(API_BASE+'/company/'+companyId, {method:'PATCH', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({website:''})});
+  const r = await fetch(API_BASE+'/company/'+companyId, {method:'PATCH', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({website:''})});
   if (r.ok) { loadAudit(); } else { alert('Clear failed'); }
 }
 
@@ -302,7 +347,7 @@ async function bulkVerifyTitles() {
   if (!ids.length) return;
   if (!confirm('AI-verify titles for '+ids.length+' contacts?')) return;
   for (const id of ids) {
-    await fetch(API_BASE+'/contact/'+id+'/verify-title', {method:'POST', headers:{'X-LF-Key':API_KEY}}).catch(()=>{});
+    await fetch(API_BASE+'/contact/'+id+'/verify-title', {method:'POST', headers:{'X-LF-Key':requireApiKey()}}).catch(()=>{});
   }
   clearSelection('notTitle');
   loadAudit();
@@ -313,7 +358,7 @@ async function bulkVerifyLowConf() {
   if (!ids.length) return;
   if (!confirm('AI-verify titles for '+ids.length+' contacts?')) return;
   for (const id of ids) {
-    await fetch(API_BASE+'/contact/'+id+'/verify-title', {method:'POST', headers:{'X-LF-Key':API_KEY}}).catch(()=>{});
+    await fetch(API_BASE+'/contact/'+id+'/verify-title', {method:'POST', headers:{'X-LF-Key':requireApiKey()}}).catch(()=>{});
   }
   clearSelection('lowConf');
   loadAudit();
@@ -323,7 +368,7 @@ async function bulkDeleteNotTitle() {
   const ids = Array.from(selections.notTitle);
   if (!ids.length) return;
   if (!confirm('Delete '+ids.length+' contacts?')) return;
-  await fetch(API_BASE+'/contacts/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids})}).catch(()=>{});
+  await fetch(API_BASE+'/contacts/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({ids})}).catch(()=>{});
   clearSelection('notTitle');
   loadAudit();
 }
@@ -332,7 +377,7 @@ async function bulkDeleteLowConf() {
   const ids = Array.from(selections.lowConf);
   if (!ids.length) return;
   if (!confirm('Delete '+ids.length+' contacts?')) return;
-  await fetch(API_BASE+'/contacts/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids})}).catch(()=>{});
+  await fetch(API_BASE+'/contacts/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({ids})}).catch(()=>{});
   clearSelection('lowConf');
   loadAudit();
 }
@@ -348,7 +393,7 @@ async function bulkDiscoverPatterns() {
   const setProgress = (msg) => { info.textContent = msg; prog.textContent = msg; };
   setProgress('Starting pattern discovery...');
   try {
-    const r = await fetch(API_BASE+'/companies/bulk-discover-patterns', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids, quick:false})});
+    const r = await fetch(API_BASE+'/companies/bulk-discover-patterns', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({ids, quick:false})});
     if (!r.ok) {
       const d = await r.json().catch(()=>({}));
       setProgress('Error: ' + (d.detail || r.statusText));
@@ -362,7 +407,7 @@ async function bulkDiscoverPatterns() {
     if (patdiscPollTimer) clearInterval(patdiscPollTimer);
     patdiscPollTimer = setInterval(async () => {
       try {
-        const jr = await fetch(API_BASE+'/email/validate-job/'+jobId, {headers:{'X-LF-Key':API_KEY}});
+        const jr = await fetch(API_BASE+'/email/validate-job/'+jobId, {headers:{'X-LF-Key':requireApiKey()}});
         if (!jr.ok) return;
         const jd = await jr.json();
         const done = jd.done || 0;
@@ -390,7 +435,7 @@ async function bulkDeleteNoPat() {
   const ids = Array.from(selections.noPat);
   if (!ids.length) return;
   if (!confirm('Delete '+ids.length+' companies?')) return;
-  await fetch(API_BASE+'/companies/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids})}).catch(()=>{});
+  await fetch(API_BASE+'/companies/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({ids})}).catch(()=>{});
   clearSelection('noPat');
   loadAudit();
 }
@@ -399,7 +444,7 @@ async function bulkDeleteWebQ() {
   const ids = Array.from(selections.webq);
   if (!ids.length) return;
   if (!confirm('Delete '+ids.length+' companies?')) return;
-  await fetch(API_BASE+'/companies/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({ids})}).catch(()=>{});
+  await fetch(API_BASE+'/companies/bulk-delete', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({ids})}).catch(()=>{});
   clearSelection('webq');
   loadAudit();
 }
@@ -408,8 +453,8 @@ async function bulkDeleteWebQ() {
 async function loadAudit() {
   try {
     const [companies, contacts] = await Promise.all([
-      fetch(API_BASE+'/companies?limit=500', {headers:{'X-LF-Key':API_KEY}}).then(r=>r.ok?r.json():{companies:[]}),
-      fetch(API_BASE+'/contacts?limit=500', {headers:{'X-LF-Key':API_KEY}}).then(r=>r.ok?r.json():{contacts:[]}),
+      fetch(API_BASE+'/companies?limit=500', {headers:{'X-LF-Key':requireApiKey()}}).then(r=>r.ok?r.json():{companies:[]}),
+      fetch(API_BASE+'/contacts?limit=500', {headers:{'X-LF-Key':requireApiKey()}}).then(r=>r.ok?r.json():{contacts:[]}),
     ]);
 
     const comps = companies.companies || [];
@@ -530,13 +575,90 @@ async function loadAudit() {
 }
 
 let backfillPollTimer = null;
+let enrichCurrentJobId = null;
+const ENRICH_LS_KEY = 'enrich_job_id';
+const ENRICH_SESSION_LS_KEY = 'enrich_session_key';
+
+function stageLabel(stage) {
+  if (!stage) return 'Processing...';
+  const idx = stage.indexOf(':');
+  const prefix = (idx > -1 ? stage.slice(0, idx) : stage).toLowerCase();
+  const company = idx > -1 ? stage.slice(idx + 1).trim() : '';
+  const map = {
+    website: 'Filling website',
+    pattern: 'Deep-researching email pattern',
+    pattern_deep_research: 'Deep-researching email pattern',
+    type: 'Determining business type',
+    sanity: 'Running sanity checks',
+    derive_emails: 'Deriving emails',
+    contacts: 'Finding contacts'
+  };
+  const label = map[prefix] || prefix;
+  return company ? label + ' for ' + company : label;
+}
+
+function renderEnrichProgress(job) {
+  const panel = document.getElementById('enrichProgress');
+  const statusBadge = document.getElementById('enrichStatus');
+  const bar = document.getElementById('enrichBar');
+  const step = document.getElementById('enrichStep');
+  const count = document.getElementById('enrichCount');
+  if (!panel) return;
+  panel.classList.add('active');
+  const total = job.total || 0;
+  const done = job.done || 0;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  bar.style.width = pct + '%';
+  bar.className = 'progress-bar-fill ' + (job.status === 'completed' ? 'completed' : job.status === 'failed' ? 'failed' : '');
+  statusBadge.textContent = job.status || 'running';
+  statusBadge.className = 'progress-status ' + (job.status || 'running');
+  step.textContent = job.status === 'completed' ? 'Completed' : job.status === 'failed' ? 'Failed: ' + (job.message || '') : stageLabel(job.current_stage || '');
+  count.textContent = done + ' / ' + total;
+}
+
+function clearEnrichJob() {
+  if (backfillPollTimer) { clearInterval(backfillPollTimer); backfillPollTimer = null; }
+  if (enrichPollTimer) { clearInterval(enrichPollTimer); enrichPollTimer = null; }
+  enrichCurrentJobId = null;
+  localStorage.removeItem(ENRICH_LS_KEY);
+  localStorage.removeItem(ENRICH_SESSION_LS_KEY);
+  const panel = document.getElementById('enrichProgress');
+  if (panel) panel.classList.remove('active');
+}
+
+let enrichPollTimer = null;
+
+async function pollEnrichJob(jobId) {
+  try {
+    const r = await fetch(API_BASE + '/ai/backfill-job/' + encodeURIComponent(jobId), { headers: { 'X-LF-Key': requireApiKey() } });
+    if (!r.ok) return;
+    const d = await r.json();
+    const job = d.job || d;
+    renderEnrichProgress(job);
+    enrichCurrentJobId = jobId;
+    if (job.status === 'completed' || job.status === 'failed') {
+      clearEnrichJob();
+      document.getElementById('actionInfo').textContent = job.status === 'completed' ? 'Backfill completed.' : 'Backfill failed: ' + (job.message || '');
+      loadAudit();
+    }
+  } catch (e) { console.error('poll enrich error:', e); }
+}
+
+function startEnrichPolling(jobId) {
+  if (enrichPollTimer) clearInterval(enrichPollTimer);
+  enrichCurrentJobId = jobId;
+  localStorage.setItem(ENRICH_LS_KEY, jobId);
+  renderEnrichProgress({ status: 'running', done: 0, total: 0, current_stage: 'website' });
+  pollEnrichJob(jobId);
+  enrichPollTimer = setInterval(() => pollEnrichJob(jobId), 3000);
+}
 
 async function backfillWebsites() {
   if (!confirm('Backfill missing websites for companies using AI?\n\nRuns in background — you can continue using the app.')) return;
   const info = document.getElementById('actionInfo');
   info.textContent = 'Starting backfill...';
   try {
-    const r = await fetch(API_BASE+'/ai/backfill', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}, body:JSON.stringify({tasks:['website'],only_missing:true,limit:100})});
+    const r = await fetch(API_BASE+'/ai/backfill', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}, body:JSON.stringify({tasks:['website'],only_missing:true,limit:100})});
     if (!r.ok) {
       const d = await r.json().catch(()=>({}));
       info.textContent = 'Error: ' + (d.detail || r.statusText);
@@ -545,33 +667,89 @@ async function backfillWebsites() {
     const d = await r.json();
     if (d.status === 'no_work') { info.textContent = 'No companies need backfill.'; return; }
     const jobId = d.job_id;
-    info.textContent = 'Backfill running... (0/' + d.total + ')';
-    // Poll every 3 seconds
-    if (backfillPollTimer) clearInterval(backfillPollTimer);
-    backfillPollTimer = setInterval(async () => {
-      try {
-        const jr = await fetch(API_BASE+'/email/validate-job/'+jobId, {headers:{'X-LF-Key':API_KEY}});
-        if (!jr.ok) return;
-        const jd = await jr.json();
-        const job = jd.job || jd;
-        info.textContent = 'Backfill running... (' + (job.done||0) + '/' + (job.total||d.total) + ')';
-        if (job.status === 'completed' || job.status === 'failed') {
-          clearInterval(backfillPollTimer);
-          backfillPollTimer = null;
-          const summary = job.results ? JSON.parse(job.results) : {};
-          if (job.status === 'completed') {
-            info.textContent = 'Done: '+(summary.websites_updated||0)+' websites updated ('+(summary.searxng_finds||0)+' via web search), '+(summary.patterns_found||0)+' patterns found, '+(summary.errors||0)+' errors';
-          } else {
-            info.textContent = 'Backfill failed after '+(job.done||0)+' companies';
-          }
-          loadAudit();
-        }
-      } catch(e) { /* ignore poll errors */ }
-    }, 3000);
+    if (!jobId) { info.textContent = 'No job_id returned'; return; }
+    localStorage.setItem(ENRICH_LS_KEY, jobId);
+    startEnrichPolling(jobId);
   } catch(e) { info.textContent = 'Error: '+e.message; }
 }
 
-loadAudit();
+async function resumeEnrichPolling() {
+  const storedJobId = localStorage.getItem(ENRICH_LS_KEY);
+  if (!storedJobId) { clearEnrichJob(); return; }
+  try {
+    const r = await fetch(API_BASE + '/ai/backfill-job/' + encodeURIComponent(storedJobId), { headers: { 'X-LF-Key': requireApiKey() } });
+    if (!r.ok) { clearEnrichJob(); return; }
+    const d = await r.json();
+    const job = d.job || d;
+    if (job.status === 'completed' || job.status === 'failed') {
+      clearEnrichJob();
+      return;
+    }
+    startEnrichPolling(storedJobId);
+  } catch (e) { console.error('resume enrich error:', e); clearEnrichJob(); }
+}
+
+// ── LinkedIn plugin push audit log (Phase 3 / t3.3) ─────────────────────────
+async function loadPluginPushes() {
+  try {
+    const r = await fetch(API_BASE + '/audit/plugin-pushes?limit=50', { headers: { 'X-LF-Key': requireApiKey() } });
+    if (!r.ok) {
+      document.getElementById('pluginPushesTable').innerHTML =
+        '<tr><td colspan="6" class="empty-msg">Failed to load plugin pushes (HTTP '+r.status+').</td></tr>';
+      return;
+    }
+    const d = await r.json();
+    const rows = d.pushes || [];
+    const tbody = document.getElementById('pluginPushesTable');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">No plugin pushes yet. Browse a LinkedIn profile, click the Lead Finder extension, and push one.</td></tr>';
+      return;
+    }
+    const actionBadge = (a) => {
+      if (!a) return '<span class="badge">—</span>';
+      const map = {
+        'update_existing': 'badge-green',
+        'new_contact_existing_company': 'badge-yellow',
+        'new_company_new_contact': 'badge-yellow',
+        'discard': 'badge-red',
+      };
+      const cls = map[a] || 'badge';
+      return '<span class="badge '+cls+'">'+escapeHtml(a)+'</span>';
+    };
+    tbody.innerHTML = rows.map((p) => {
+      const when = p.created_at ? escapeHtml(p.created_at.replace('T', ' ').replace(/\..*$/, '')) : '—';
+      const user = escapeHtml(p.committed_by || 'plugin');
+      const slug = escapeHtml(p.linkedin_slug || '—');
+      const action = actionBadge(p.matched_action);
+      const contact = p.matched_contact_id ? '#'+p.matched_contact_id : '—';
+      const company = p.matched_company_id ? '#'+p.matched_company_id : '—';
+      return '<tr>'+
+        '<td title="'+escapeHtml(p.created_at||'')+'">'+when+'</td>'+
+        '<td>'+user+'</td>'+
+        '<td><a href="https://www.linkedin.com/in/'+escapeHtml(p.linkedin_slug||'')+'" target="_blank" style="color:#38bdf8;text-decoration:none;" title="Open on LinkedIn">'+slug+'</a></td>'+
+        '<td>'+action+'</td>'+
+        '<td>'+contact+'</td>'+
+        '<td>'+company+'</td>'+
+      '</tr>';
+    }).join('');
+  } catch (e) {
+    console.error('loadPluginPushes error:', e);
+    document.getElementById('pluginPushesTable').innerHTML =
+      '<tr><td colspan="6" class="empty-msg">Error: '+escapeHtml(String(e))+'</td></tr>';
+  }
+}
+
+(async function bootstrap() {
+  try {
+    await initApiKey();
+    loadAudit();
+    loadPluginPushes();
+    resumeEnrichPolling();
+  } catch (e) {
+    console.error('audit page bootstrap failed:', e);
+    alert('Failed to load API key: ' + e.message);
+  }
+})();
 </script>
 </body>
 </html>

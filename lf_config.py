@@ -6,12 +6,38 @@ Loads settings from lf_config.json. All runtime config in one place.
 """
 
 import json
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "lf_config.json"
 
 _config = None
+
+
+def _load_dotenv(path: Path) -> None:
+    """Load a simple KEY=VALUE .env file into os.environ (no external deps)."""
+    if not path.exists():
+        return
+    with open(path) as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or line.startswith("//"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip()
+            if val.startswith(("'", '"')) and val.endswith(("'", '"')) and len(val) >= 2:
+                val = val[1:-1]
+            if key and key not in os.environ:
+                os.environ[key] = val
+
+
+# Load local env files on import so secret config helpers see them.
+_load_dotenv(BASE_DIR / ".env")
+_load_dotenv(BASE_DIR / ".env.local")
 
 
 def load_config() -> dict:
@@ -22,6 +48,31 @@ def load_config() -> dict:
     return _config
 
 
+def _env_name_for_config_key(key: str) -> str:
+    """Return the conventional env-var name for a config key.
+
+    For keys like ``lf_api_key`` we also support ``LF_API_KEY``. Keys that
+    already carry an ``_envvar`` suffix in config.json are handled explicitly
+    by callers.
+    """
+    return key.upper()
+
+
+def _resolve_secret(key: str, default=None):
+    """Resolve a secret/config value: env var wins, then config.json, then default."""
+    env_name = _env_name_for_config_key(key)
+    val = os.environ.get(env_name)
+    if val is not None:
+        return val
+    # Allow explicit envvar pointer in config, e.g. "lf_api_key_envvar": "LF_API_KEY"
+    env_pointer = load_config().get(f"{key}_envvar")
+    if env_pointer:
+        val = os.environ.get(env_pointer)
+        if val is not None:
+            return val
+    return load_config().get(key, default)
+
+
 def reload_config() -> dict:
     """Force reload config from disk."""
     global _config
@@ -30,6 +81,23 @@ def reload_config() -> dict:
 
 
 def get(key: str, default=None):
+    """Get a config value. Secrets and sensitive keys are resolved from env first."""
+    if key.endswith("_envvar"):
+        return load_config().get(key, default)
+    # Secret-like keys that should prefer environment variables
+    secret_keys = {
+        "lf_api_key",
+        "google_maps_api_key",
+        "google_custom_search_api_key",
+        "serpapi_api_key",
+        "brave_search_api_key",
+        "tavily_api_key",
+        "exa_api_key",
+        "firecrawl_api_key",
+        "serper_api_key",
+    }
+    if key in secret_keys:
+        return _resolve_secret(key, default)
     return load_config().get(key, default)
 
 
@@ -41,7 +109,16 @@ def require(key: str):
 
 
 def google_maps_api_key() -> str:
-    return get("google_maps_api_key") or get("google_maps_api_key_envvar")
+    return get("google_maps_api_key") or os.environ.get(get("google_maps_api_key_envvar", "GOOGLE_MAPS_API_KEY"), "")
+
+
+def lf_api_key() -> str:
+    """API key used by the server and web UI. Prefer env var, fall back to config.json."""
+    return get("lf_api_key", "")
+
+
+def api_key_envvar() -> str:
+    return get("lf_api_key_envvar", "LF_API_KEY")
 
 
 def searxng_url() -> str:
@@ -91,6 +168,38 @@ def brave_search_monthly_limit() -> int:
 
 def serpapi_monthly_limit() -> int:
     return get("serpapi_monthly_limit", 250)
+
+
+def tavily_api_key() -> str:
+    return get("tavily_api_key", "")
+
+
+def tavily_monthly_limit() -> int:
+    return get("tavily_monthly_limit", 1000)
+
+
+def exa_api_key() -> str:
+    return get("exa_api_key", "")
+
+
+def exa_monthly_limit() -> int:
+    return get("exa_monthly_limit", 1000)
+
+
+def firecrawl_api_key() -> str:
+    return get("firecrawl_api_key", "")
+
+
+def firecrawl_monthly_limit() -> int:
+    return get("firecrawl_monthly_limit", 500)
+
+
+def serper_api_key() -> str:
+    return get("serper_api_key", "")
+
+
+def serper_limit() -> int:
+    return get("serper_limit", 2500)
 
 
 # ── PixelRAG Visual RAG (added 2026-06-14) ──────────────────────────────────

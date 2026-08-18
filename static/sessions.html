@@ -33,6 +33,20 @@ tr:hover td{background:#1e293b}
 .badge-local{background:#22c55e33;color:#22c55e}
 .badge-hq{background:#f59e0b33;color:#f59e0b}
 .badge-blue{background:#38bdf833;color:#38bdf8}
+/* AI enrichment progress panel (shared with companies page) */
+.progress-panel{display:none;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem}
+.progress-panel.active{display:block}
+.progress-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem}
+.progress-title{font-size:0.9rem;font-weight:600;color:#38bdf8}
+.progress-status{display:inline-block;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600;text-transform:uppercase}
+.progress-status.running{background:#38bdf833;color:#38bdf8}
+.progress-status.completed{background:#22c55e33;color:#22c55e}
+.progress-status.failed{background:#ef444433;color:#ef4444}
+.progress-bar-bg{height:8px;background:#334155;border-radius:4px;overflow:hidden;margin-bottom:0.5rem}
+.progress-bar-fill{height:100%;background:#38bdf8;width:0%;transition:width 0.3s;border-radius:4px}
+.progress-bar-fill.completed{background:#22c55e}
+.progress-bar-fill.failed{background:#ef4444}
+.progress-meta{display:flex;justify-content:space-between;font-size:0.8rem;color:#94a3b8;gap:1rem}
 /* Sortable column headers (added 2026-06-16) */
 th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:1.1rem;transition:background 0.15s}
 th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
@@ -62,6 +76,12 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 <div class="stat-card"><div class="stat-value" id="statSessions">-</div><div class="stat-label">Sessions</div></div>
 </div>
 
+<div id="enrichProgress" class="progress-panel">
+<div class="progress-header"><span class="progress-title">AI Enrichment</span><span id="enrichStatus" class="progress-status running">running</span></div>
+<div class="progress-bar-bg"><div id="enrichBar" class="progress-bar-fill"></div></div>
+<div class="progress-meta"><span id="enrichStep">Starting...</span><span id="enrichCount">0 / 0</span></div>
+</div>
+
 <div class="card">
 <h2>Search Sessions</h2>
 <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
@@ -85,9 +105,8 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 
 </div>
 
+<script src="/api-key-loader.js"></script>
 <script>
-const API_BASE = '/api';
-const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 
 // Sortable column handler (added 2026-06-16) — for all 3 tables on this page
 function _compareValues(a, b, dir) {
@@ -141,7 +160,7 @@ function wireSortableHeaders(table, sortState) {
 
 async function loadStats() {
   try {
-    const r = await fetch(API_BASE+'/stats', {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/stats', {headers: {'X-LF-Key': requireApiKey()}});
     if (!r.ok) return;
     const d = await r.json();
     document.getElementById('statCompanies').textContent = d.companies || 0;
@@ -155,7 +174,7 @@ let sessionsSort = { key: 'created_at', dir: 'desc' };
 
 async function loadSessions() {
   try {
-    const r = await fetch(API_BASE+'/sessions', {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/sessions', {headers: {'X-LF-Key': requireApiKey()}});
     if (!r.ok) { console.error('loadSessions HTTP', r.status); return; }
     let sessions = await r.json();
     sessions = sortByKey(sessions, sessionsSort.key, sessionsSort.dir);
@@ -301,7 +320,7 @@ function wireSubTableSort() {
 
 async function loadSession(sk) {
   try {
-    const r = await fetch(API_BASE+'/session/'+sk+'/results', {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/session/'+sk+'/results', {headers: {'X-LF-Key': requireApiKey()}});
     if (!r.ok) { alert('Failed to load session '+sk+' (HTTP '+r.status+')'); return; }
     const data = await r.json();
     window.currentSessionKey = sk;  // Store for re-enrich
@@ -311,8 +330,8 @@ async function loadSession(sk) {
     // Store data for sort re-renders
     sessionDetailData = data;
     let html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem;"><div class="stat-card"><div class="stat-value">'+(data.companies.length||0)+'</div><div class="stat-label">Companies</div></div><div class="stat-card"><div class="stat-value">'+(data.contacts.length||0)+'</div><div class="stat-label">Contacts</div></div></div>';
-    // Add Re-Enrich All button
-    html += '<div style="margin-bottom:1rem;"><button class="btn btn-orange btn-sm" onclick="reEnrichAll()">Refresh Contacts</button> <span style="color:#64748b;font-size:0.8rem;">Re-runs executive discovery for all companies</span></div>';
+    // Add AI Enrich All button
+    html += '<div style="margin-bottom:1rem;"><button class="btn btn-purple btn-sm" onclick="startAiEnrich()" title="Run full AI enrichment pipeline on all session companies">AI Enrich All</button> <button class="btn btn-orange btn-sm" onclick="reEnrichAll()">Refresh Contacts</button> <span style="color:#64748b;font-size:0.8rem;">Re-runs executive discovery for all companies</span></div>';
     html += renderCompaniesSubTable(data.companies, data.contacts);
     html += renderContactsSubTable(data.contacts);
     document.getElementById('detailContent').innerHTML = html;
@@ -330,7 +349,7 @@ async function deleteSession(sk) {
   try {
     const r = await fetch(API_BASE+'/session/'+sk, {
       method: 'DELETE',
-      headers: {'X-LF-Key': API_KEY}
+      headers: {'X-LF-Key': requireApiKey()}
     });
     const d = await r.json();
     if (r.ok) {
@@ -347,7 +366,7 @@ async function resumeSession(sk) {
   try {
     const r = await fetch(API_BASE+'/session/'+sk+'/resume', {
       method: 'POST',
-      headers: {'Content-Type':'application/json','X-LF-Key':API_KEY}
+      headers: {'Content-Type':'application/json','X-LF-Key':requireApiKey()}
     });
     if (r.ok) {
       const d = await r.json();
@@ -372,7 +391,7 @@ async function reEnrichCompany(placeId, companyName, existingCount) {
   try {
     const r = await fetch(API_BASE+'/discover/'+placeId+'/executives', {
       method: 'POST',
-      headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
+      headers: {'Content-Type':'application/json','X-LF-Key':requireApiKey()},
       body: JSON.stringify({})
     });
     const d = await r.json();
@@ -397,7 +416,7 @@ async function findContacts(placeId, companyName, existingCount) {
   }
   const r = await fetch(API_BASE+'/discover/'+placeId+'/executives', {
     method: 'POST',
-    headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
+    headers: {'Content-Type':'application/json','X-LF-Key':requireApiKey()},
     body: JSON.stringify({})
   });
   const d = await r.json();
@@ -413,14 +432,14 @@ async function reEnrichAll() {
   if (!window.currentSessionKey) { alert('No session loaded'); return; }
   if (!confirm('Re-discover executives for ALL companies in this session?')) return;
   // Fetch session companies
-  const r = await fetch(API_BASE+'/session/'+window.currentSessionKey+'/results', {headers: {'X-LF-Key': API_KEY}});
+  const r = await fetch(API_BASE+'/session/'+window.currentSessionKey+'/results', {headers: {'X-LF-Key': requireApiKey()}});
   const d = await r.json();
   let enriched = 0;
   for (const c of (d.companies||[])) {
     try {
       const rr = await fetch(API_BASE+'/discover/'+c.place_id+'/executives', {
         method: 'POST',
-        headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
+        headers: {'Content-Type':'application/json','X-LF-Key':requireApiKey()},
         body: JSON.stringify({})
       });
       if (rr.ok) enriched++;
@@ -430,8 +449,169 @@ async function reEnrichAll() {
   loadSession(window.currentSessionKey);
 }
 
-loadStats();
-loadSessions();
+// AI enrichment progress (shared state with companies page via localStorage)
+let enrichPollTimer = null;
+let enrichCurrentJobId = null;
+const ENRICH_LS_KEY = 'enrich_job_id';
+const ENRICH_SESSION_LS_KEY = 'enrich_session_key';
+
+function getEnrichSessionKey() {
+  return window.currentSessionKey || '';
+}
+
+function stageLabel(stage) {
+  if (!stage) return 'Processing...';
+  const idx = stage.indexOf(':');
+  const prefix = (idx > -1 ? stage.slice(0, idx) : stage).toLowerCase();
+  const company = idx > -1 ? stage.slice(idx + 1).trim() : '';
+  const map = {
+    website: 'Filling website',
+    pattern: 'Deep-researching email pattern',
+    pattern_deep_research: 'Deep-researching email pattern',
+    type: 'Determining business type',
+    sanity: 'Running sanity checks',
+    derive_emails: 'Deriving emails',
+    contacts: 'Finding contacts'
+  };
+  const label = map[prefix] || prefix;
+  return company ? label + ' for ' + company : label;
+}
+
+function formatEnrichStep(job) {
+  if (!job) return 'Starting...';
+  if (job.status === 'completed') return 'Completed';
+  if (job.status === 'failed') return 'Failed: ' + (job.message || '');
+  return job.current_stage ? stageLabel(job.current_stage) : 'Processing...';
+}
+
+function renderEnrichProgress(job) {
+  const panel = document.getElementById('enrichProgress');
+  const statusBadge = document.getElementById('enrichStatus');
+  const bar = document.getElementById('enrichBar');
+  const step = document.getElementById('enrichStep');
+  const count = document.getElementById('enrichCount');
+  if (!panel) return;
+  panel.classList.add('active');
+  const total = job.total || 0;
+  const done = job.done || 0;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  bar.style.width = pct + '%';
+  bar.className = 'progress-bar-fill ' + (job.status === 'completed' ? 'completed' : job.status === 'failed' ? 'failed' : '');
+  statusBadge.textContent = job.status || 'running';
+  statusBadge.className = 'progress-status ' + (job.status || 'running');
+  step.textContent = formatEnrichStep(job);
+  count.textContent = done + ' / ' + total;
+}
+
+function clearEnrichJob() {
+  if (enrichPollTimer) { clearInterval(enrichPollTimer); enrichPollTimer = null; }
+  enrichCurrentJobId = null;
+  localStorage.removeItem(ENRICH_LS_KEY);
+  localStorage.removeItem(ENRICH_SESSION_LS_KEY);
+  const panel = document.getElementById('enrichProgress');
+  if (panel) panel.classList.remove('active');
+}
+
+async function pollEnrichJob(jobId) {
+  try {
+    const r = await fetch(API_BASE + '/ai/backfill-job/' + encodeURIComponent(jobId), { headers: { 'X-LF-Key': requireApiKey() } });
+    if (!r.ok) return;
+    const d = await r.json();
+    const job = d.job || d;
+    renderEnrichProgress(job);
+    enrichCurrentJobId = jobId;
+    if (job.status === 'completed' || job.status === 'failed') {
+      clearEnrichJob();
+      const msg = job.status === 'completed' ? 'AI enrichment completed' : 'AI enrichment failed: ' + (job.message || 'unknown');
+      alert(msg);
+      if (window.currentSessionKey) loadSession(window.currentSessionKey);
+      loadStats();
+    }
+  } catch (e) { console.error('poll enrich error:', e); }
+}
+
+function startEnrichPolling(jobId) {
+  if (enrichPollTimer) clearInterval(enrichPollTimer);
+  enrichCurrentJobId = jobId;
+  localStorage.setItem(ENRICH_LS_KEY, jobId);
+  renderEnrichProgress({ status: 'running', done: 0, total: 0, current_stage: 'Starting' });
+  pollEnrichJob(jobId);
+  enrichPollTimer = setInterval(() => pollEnrichJob(jobId), 3000);
+}
+
+async function startAiEnrich() {
+  const session_key = getEnrichSessionKey();
+  if (!session_key) { alert('Load a session first'); return; }
+  const companies = sessionDetailData && sessionDetailData.companies ? sessionDetailData.companies : [];
+  if (companies.length === 0) { alert('No companies in this session'); return; }
+  const company_ids = companies.map(c => c.id).filter(Boolean);
+  if (!confirm('Run full AI enrichment for ' + company_ids.length + ' companies in session ' + session_key + '?\n\nThis includes website, pattern, type, sanity, emails, and contacts.')) return;
+  try {
+    const r = await fetch(API_BASE + '/ai/backfill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-LF-Key': requireApiKey() },
+      body: JSON.stringify({ session_key, company_ids, tasks: ['website', 'pattern', 'type', 'sanity', 'derive_emails', 'contacts'], only_missing: true, limit: 1000 })
+    });
+    const d = await r.json();
+    if (!r.ok) { alert('AI Enrich failed: ' + (d.detail || 'unknown')); return; }
+    const jobId = d.job_id;
+    if (!jobId) { alert('No job_id returned'); return; }
+    localStorage.setItem(ENRICH_LS_KEY, jobId);
+    localStorage.setItem(ENRICH_SESSION_LS_KEY, session_key);
+    alert(d.message || 'AI enrichment started (' + (d.total || company_ids.length) + ' companies)');
+    startEnrichPolling(jobId);
+  } catch (e) {
+    alert('AI Enrich error: ' + e.message);
+  }
+}
+
+async function resumeEnrichPolling() {
+  const storedJobId = localStorage.getItem(ENRICH_LS_KEY);
+  if (storedJobId) {
+    try {
+      const r = await fetch(API_BASE + '/ai/backfill-job/' + encodeURIComponent(storedJobId), { headers: { 'X-LF-Key': requireApiKey() } });
+      if (r.ok) {
+        const d = await r.json();
+        const job = d.job || d;
+        if (job.status === 'completed' || job.status === 'failed') {
+          clearEnrichJob();
+          return;
+        }
+        startEnrichPolling(storedJobId);
+        return;
+      }
+    } catch (e) { console.error('resume stored job error:', e); }
+  }
+  const session_key = getEnrichSessionKey() || localStorage.getItem(ENRICH_SESSION_LS_KEY);
+  if (session_key) {
+    try {
+      const r = await fetch(API_BASE + '/ai/backfill-jobs?session_key=' + encodeURIComponent(session_key), { headers: { 'X-LF-Key': requireApiKey() } });
+      if (r.ok) {
+        const d = await r.json();
+        const active = (d.jobs || []).find(j => j.status !== 'completed' && j.status !== 'failed');
+        if (active && active.job_id) {
+          localStorage.setItem(ENRICH_LS_KEY, active.job_id);
+          localStorage.setItem(ENRICH_SESSION_LS_KEY, session_key);
+          startEnrichPolling(active.job_id);
+          return;
+        }
+      }
+    } catch (e) { console.error('resume by session error:', e); }
+  }
+  clearEnrichJob();
+}
+
+(async function bootstrap() {
+  try {
+    await initApiKey();
+    loadStats();
+    loadSessions();
+    resumeEnrichPolling();
+  } catch (e) {
+    console.error('sessions page bootstrap failed:', e);
+    alert('Failed to load API key: ' + e.message);
+  }
+})();
 </script>
 </body>
 </html>

@@ -47,6 +47,8 @@ from pathlib import Path
 from typing import Optional
 
 from lf_config import get
+from lf_db import log_ai_call
+from lf_stages import resolve_model_chain
 
 BASE_DIR = Path(__file__).parent
 USAGE_FILE = BASE_DIR / "provider_usage.json"
@@ -143,15 +145,26 @@ def _current_month() -> str:
     return f"{now.year}-{now.month:02d}"
 
 
-def _track_call(model: str, operation: str, success: bool, latency_ms: int, gap_count: int = 0) -> None:
+def _track_call(
+    model: str,
+    operation: str,
+    success: bool,
+    latency_ms: int,
+    gap_count: int = 0,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[int] = None,
+    stage: Optional[str] = None,
+) -> None:
     """
-    Track AI call in provider_usage.json.
+    Track AI call in provider_usage.json and the ai_call_log table.
     Stats tracked per month per model+operation:
       - calls (total)
       - success / fail
       - latency_total_ms
       - gap_total (for gap-fill operations)
+    The DB log ties each call to an entity + stage for per-call observability.
     """
+    # File-based aggregation (legacy, kept for backwards compatibility)
     usage = _load_usage()
     month = _current_month()
     if month not in usage:
@@ -171,6 +184,22 @@ def _track_call(model: str, operation: str, success: bool, latency_ms: int, gap_
     model_stats["latency_total_ms"] += latency_ms
     model_stats["gap_total"] += gap_count
     _save_usage(usage)
+
+    # DB-backed per-call log (QC-21)
+    try:
+        log_ai_call(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            model=model,
+            operation=operation,
+            stage=stage,
+            latency_ms=latency_ms,
+            success=success,
+            gap_count=gap_count,
+        )
+    except Exception:
+        # Logging must never break the AI pipeline
+        pass
 
 
 def get_ai_usage_summary() -> dict:
@@ -270,36 +299,37 @@ def ai_complete(
     prompt: str,
     operation: str = "general",
     gap_count: int = 0,
-    timeout: Optional[int] = None
+    timeout: Optional[int] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[int] = None,
+    stage: Optional[str] = None,
 ) -> Optional[str]:
     """
     Send a prompt to Ollama, trying the cloud model chain in order.
     Returns the response text from the first model that succeeds, or None if all fail.
 
-    For DEEP_RESEARCH operations (pattern_inference, website_discovery,
-    business_type_normalize, company_sanity), the deep research model
-    (deepseek-v4-pro:cloud) is tried first. This is the "deep research
-    model" that the user wants for these multi-hop reasoning tasks.
+    Model selection is now routed through lf_stages.resolve_model_chain() so that
+    the right model is deployed for the right stage (QC-20):
+      - Agentic verification loop: deepseek-v4-flash:cloud primary, Pro for refinement
+      - Deep research ops: deepseek-v4-pro:cloud primary
+      - General / gap fill: minimax-m3:cloud primary
 
     Args:
       prompt: The user prompt to send
       operation: Operation type for usage tracking
       gap_count: Number of gaps being filled (for stats)
       timeout: Timeout in seconds (default: from config)
+      entity_type: 'contact' or 'company' for per-entity ai_call_log rows
+      entity_id: DB id of the entity acted on
+      stage: Pipeline stage this call is part of (e.g. 'verify', 'enrichment')
     """
     if not ai_enabled():
         return None
 
     timeout = timeout or ai_timeout()
 
-    # Choose model chain based on operation type
-    if operation in DEEP_RESEARCH_OPERATIONS:
-        # Deep research: deepseek-v4-pro first (user's preferred model for
-        # multi-hop reasoning tasks), then standard chain
-        primary = get("ai_deep_research_model", "deepseek-v4-pro:cloud")
-        models = [primary] + [m for m in cloud_model_chain() if m != primary]
-    else:
-        models = cloud_model_chain()
+    # Choose model chain based on operation + stage (QC-20)
+    models = resolve_model_chain(operation=operation, stage=stage, gap_count=gap_count)
 
     last_error = None
     for model in models:
@@ -313,17 +343,26 @@ def ai_complete(
         latency_ms = int((time.time() - start) * 1000)
 
         if result is None:
-            _track_call(model, operation, success=False, latency_ms=latency_ms, gap_count=gap_count)
+            _track_call(
+                model, operation, success=False, latency_ms=latency_ms, gap_count=gap_count,
+                entity_type=entity_type, entity_id=entity_id, stage=stage,
+            )
             last_error = f"{model} failed"
             continue  # try next model
 
         response_text = result.get("response", "").strip()
         if not response_text:
-            _track_call(model, operation, success=False, latency_ms=latency_ms, gap_count=gap_count)
+            _track_call(
+                model, operation, success=False, latency_ms=latency_ms, gap_count=gap_count,
+                entity_type=entity_type, entity_id=entity_id, stage=stage,
+            )
             last_error = f"{model} returned empty"
             continue  # try next model
 
-        _track_call(model, operation, success=True, latency_ms=latency_ms, gap_count=gap_count)
+        _track_call(
+            model, operation, success=True, latency_ms=latency_ms, gap_count=gap_count,
+            entity_type=entity_type, entity_id=entity_id, stage=stage,
+        )
         return response_text
 
     logger.warning("All AI models failed: %s", last_error)
@@ -907,10 +946,10 @@ def ai_infer_email_pattern_v2(
     # quick=True skips SearXNG entirely (for bulk operations — saves 90s per company)
     search_snippets = []
     if quick:
-        logger.info(f"ai_infer_email_pattern_v2: quick mode — skipping SearXNG for {company_name}")
+        logger.info(f"ai_infer_email_pattern_v2: quick mode — skipping web search for {company_name}")
     else:
         try:
-            from lf_search_providers import search as _searx_search
+            from lf_search_providers import search as _lf_search
             from concurrent.futures import ThreadPoolExecutor, as_completed
             search_queries = [
                 # Direct email mentions on the company domain
@@ -921,14 +960,16 @@ def ai_infer_email_pattern_v2(
                 f'"{company_name}" "{domain}" "email format"',
                 # LinkedIn / job postings often expose real employee emails
                 f'"{company_name}" "@{domain}" -site:{domain}',
-                # Use actual company name (was hardcoded "General Dynamics")
+                # Use actual company name
                 f'"{domain}" "{company_name}" "email" format',
             ]
 
-            # Run all 6 queries in parallel (8s timeout each, ~8s total instead of ~90s)
+            # Run all 6 queries in parallel through the unified search router.
+            # The router now prioritizes paid providers (Brave/Tavily/Exa/Firecrawl)
+            # and falls back to self-hosted only if paid tiers fail.
             def _run_query(q):
                 try:
-                    results, _ = _searx_search(q, timeout=8, prefer="searxng", ai_extract=False)
+                    results, _ = _lf_search(q, timeout=10, ai_extract=False)
                     hits = []
                     for r in results:
                         title = r.get("title") if isinstance(r, dict) else getattr(r, "title", "")
@@ -1063,7 +1104,10 @@ def ai_infer_email_pattern_v2(
         f' \"confidence\": 0.85, \"reasoning\": \"...\", \"pattern_index\": 1}}'
     )
 
-    response = ai_complete(prompt, operation="pattern_inference", gap_count=0, timeout=timeout)
+    # Always use the Pro-first pattern_inference chain. The SMTP proof gate is the
+    # ultimate hallucination guard, so we want the strongest reasoning here. The
+    # `quick` flag only controls whether to run the live SearXNG search step.
+    response = ai_complete(prompt, operation="pattern_inference_fast", gap_count=0, timeout=timeout)
     if not response:
         return None
 
@@ -1082,6 +1126,34 @@ def ai_infer_email_pattern_v2(
         else:
             pattern = pattern + "@{domain}"
     pattern = pattern.replace("{domain}", domain)
+
+    # Anti-hallucination guard: reject any pattern not in the canonical top 10 list.
+    # Compare against the template BEFORE domain substitution.
+    canonical_templates = {
+        "{first}.{last}@{domain}",
+        "{first}{last}@{domain}",
+        "{f}{last}@{domain}",
+        "{first}_{last}@{domain}",
+        "{first}@{domain}",
+        "{last}@{domain}",
+        "{first}.{last_initial}@{domain}",
+        "{last}.{first}@{domain}",
+        "{first}-{last}@{domain}",
+        "{f}.{last}@{domain}",
+    }
+    raw_pattern = result["pattern"]
+    # Normalize AI output to the template form.
+    if "@{domain}" not in raw_pattern:
+        if "@" in raw_pattern:
+            raw_pattern = raw_pattern.split("@")[0] + "@{domain}"
+        else:
+            raw_pattern = raw_pattern + "@{domain}"
+    if raw_pattern not in canonical_templates:
+        logger.warning(f"ai_infer_email_pattern_v2: rejecting hallucinated pattern {result['pattern']!r} for {domain}")
+        return None
+
+    # Substitute the actual domain into the pattern
+    pattern = raw_pattern.replace("{domain}", domain)
 
     return {
         "pattern": pattern,
@@ -1415,21 +1487,32 @@ def ai_research_contact(
     company_name: str,
     linkedin_url: str = "",
     current_title: str = "",
+    entity_type: Optional[str] = None,
+    entity_id: Optional[int] = None,
+    stage: Optional[str] = None,
 ) -> Optional[dict]:
     """
-    AI-driven FULL research of a contact at a specific company. PRIMARY method.
+    AI-driven FULL research of a contact. PRIMARY method.
     SearXNG only fills gaps that AI cannot determine.
 
-    The AI researches everything: title, LinkedIn URL, email, phone, location,
-    source credibility, and whether they're currently employed at the company.
+    IMPORTANT: The AI is free to reassign the contact to a different company
+    if its best evidence shows the person now works elsewhere. The caller
+    decides whether to move the contact based on is_current_employee and the
+    returned canonical_company_name.
+
+    Args:
+      entity_type: 'contact' or 'company' for per-entity ai_call_log rows
+      entity_id: DB id of the entity acted on
+      stage: Pipeline stage this call is part of (e.g. 'verify' for Stage 3.5)
 
     Returns dict with:
-      - title: verified title at target company (or None)
-      - linkedin_url: best LinkedIn URL (or existing one)
+      - title: verified current title (or None)
+      - linkedin_url: best LinkedIn URL (or None)
       - email: best guess email (or None)
       - phone: best guess phone (or None)
       - location: geographic area (or None)
-      - is_current_employee: True/False
+      - canonical_company_name: best-matching current company name
+      - is_current_employee: True/False relative to canonical_company_name
       - confidence: 0.0-1.0 overall
       - reasoning: one-line explanation
       - source: "ai_primary" or "ai_inferred"
@@ -1445,51 +1528,51 @@ def ai_research_contact(
     ctx = f"LinkedIn: {linkedin_url}" if linkedin_url else ""
     existing = f"Current scraped data: title='{current_title}'" if current_title else ""
 
-    prompt = f"""Research EVERYTHING about this person at this specific company.
+    prompt = f"""Research this person and return their CURRENT professional identity.
 
 Person: {full_name}
-Company: {company_name}
+Previously recorded company: {company_name}
+Previously recorded title: {current_title or "(none)"}
 {ctx}
 {existing}
 
-IMPORTANT: We need their information at THIS COMPANY, not their current role if they moved elsewhere.
-
-Research and return ALL of the following (return null for anything you cannot verify quickly):
-
-1. TITLE (HIGH PRIORITY): What is their exact job title at {company_name}?
-2. LinkedIn URL (MEDIUM PRIORITY): What is their LinkedIn profile URL?
-3. EMAIL (MEDIUM PRIORITY): What is their likely email at the company domain? (Return null if domain unknown or pattern unclear)
-4. PHONE (CURSORY ONLY — DO NOT SPEND EFFORT): If you happen to know their direct phone, return it. Otherwise return null. Do not search extensively for phone — it's optional.
-5. LOCATION (LOW PRIORITY): What city/region are they based in?
-6. CURRENT EMPLOYEE: Are they currently working at {company_name}?
-7. SOURCE: How do you know this? (e.g., "LinkedIn profile", "Company leadership page", "News article")
+Instructions:
+1. Determine where this person CURRENTLY works. If their current company differs from "{company_name}", return the current company in canonical_company_name and set is_current_employee=false for {company_name}.
+2. Return their CURRENT title at canonical_company_name.
+3. Find their LinkedIn profile URL. Try name + company + title first. If that fails, try name + company. If that still fails, try name only and assign a lower confidence.
+4. Only return an email if you are highly confident of both the person and the current company domain and the email pattern is clear. Otherwise return null.
+5. Phone and location are optional; return null if uncertain.
 
 Return ONLY a JSON object:
 {{
-  "title": "<exact title at this company, or null>",
+  "title": "<current exact title, or null>",
+  "canonical_company_name": "<current employer name, or null>",
   "linkedin_url": "<full LinkedIn URL, or null>",
-  "email": "<email address at company domain, or null>",
-  "phone": "<phone number or extension, or null — be lenient, null is fine>",
+  "email": "<email address at current company domain, or null>",
+  "phone": "<phone number or null>",
   "location": "<city, state or region, or null>",
-  "is_current_employee": <true/false>,
-  "confidence": <0.0-1.0 overall confidence>,
+  "is_current_employee": <true/false relative to canonical_company_name>,
+  "confidence": <0.0-1.0>,
   "is_verified": <true if you found explicit evidence>,
-  "reasoning": "<one-line: how you know>",
-  "source": "<where you found this info, e.g. 'Company leadership page', 'LinkedIn', 'News article'>"
+  "reasoning": "<one-line: how you know and which company/title/link search succeeded>",
+  "source": "<where you found this info>"
 }}
 
-Rules:
-- Return null for ANY field you cannot verify with reasonable confidence
-- Title is HIGHEST priority — spend most effort there
-- LinkedIn URL and email are MEDIUM priority
-- Phone is CURSORY — null is acceptable; do not spend effort hunting
-- Location is LOW priority
-- Do NOT guess generic titles (CEO/CFO/CTO) unless you have specific evidence
-- Prefer specific titles over generic ones (e.g., "Chief Engineer" > "Engineer")
-- Confidence < 0.5 means the data is NOT reliable
-- If the person does NOT work at this company, set is_current_employee=false and explain"""
-
-    response = ai_complete(prompt, operation="contact_research", gap_count=0)
+Confidence rules:
+- 0.85-1.0: LinkedIn URL found and company/title match are explicit
+- 0.70-0.84: Strong evidence but no direct LinkedIn URL
+- 0.55-0.69: Name + company only, title inferred
+- 0.40-0.54: Name-only match, high uncertainty
+- < 0.40: Do not claim a match; return nulls and explain
+- If the person does NOT currently work at {company_name}, set is_current_employee=false and provide the new canonical_company_name."""
+    response = ai_complete(
+        prompt,
+        operation="contact_research",
+        gap_count=0,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        stage=stage,
+    )
     if not response:
         return None
 
@@ -1510,7 +1593,7 @@ Rules:
     is_verified = bool(result.get("is_verified", confidence >= 0.7))
 
     # Build the full result
-    fields = ["title", "linkedin_url", "email", "phone", "location", "is_current_employee", "reasoning", "source"]
+    fields = ["title", "canonical_company_name", "linkedin_url", "email", "phone", "location", "is_current_employee", "reasoning", "source"]
     output = {}
     for f in fields:
         output[f] = result.get(f)
@@ -1534,24 +1617,28 @@ def ai_search_linkedin_executives(
     industry: str = "",
     city: str = "",
     state: str = "",
+    website: str = "",
+    domain: str = "",
+    name_variants: list[str] | None = None,
+    parent_company: str = "",
+    extra_context: str = "",
     radius_miles: int = 25,
     timeout: int = 25,
 ) -> Optional[list[dict]]:
     """
-    AI searches its knowledge for senior executives at {company_name}
-    near {city}, {state}. Per user feedback (2026-06-16): the prompt
-    must be targeted, use all search variables, and request a
-    table-format response we can parse directly into the
-    enrichment chain. The output is then fed to PixelRAG to verify
-    LinkedIn URLs and extract latest experience/role/title/location.
+    AI searches its knowledge for senior executives at {company_name}.
+    Uses the production executive-discovery prompt with broadening rules
+    for obscure subsidiaries, name variants, parent companies, and location.
 
     Each result:
       - full_name: str
-      - title: str (CEO, President, VP, Director, Plant Manager, COO, etc.)
-      - linkedin_url: str (best guess; verified later by PixelRAG)
-      - location: str (city, state)
+      - title: str
+      - linkedin_url: str (best guess)
+      - location: str
       - is_current_employee: bool
       - confidence: 0.0-1.0
+      - reasoning: str
+      - source: str
 
     Returns None on AI failure. Empty list is valid (AI doesn't know).
     """
@@ -1560,7 +1647,9 @@ def ai_search_linkedin_executives(
     if not company_name:
         return None
 
-    # Build a tight location string. Use all available variables.
+    name_variants = name_variants or []
+    variants_str = ", ".join(name_variants) if name_variants else "(none known)"
+
     location_str = ""
     if city and state:
         location_str = f"{city}, {state}"
@@ -1568,45 +1657,83 @@ def ai_search_linkedin_executives(
         location_str = state
     elif city:
         location_str = city
-    radius_str = f" within {radius_miles} miles" if radius_miles else ""
 
-    # Industry context helps disambiguate common company names
-    industry_str = f" in the {industry} industry" if industry else ""
+    context_parts = [
+        f"Official company name: {company_name}",
+        f"Known name variants / abbreviations: {variants_str}",
+    ]
+    if parent_company:
+        context_parts.append(f"Parent or related entity (if known): {parent_company}")
+    if industry:
+        context_parts.append(f"Industry / sector: {industry}")
+    if website:
+        context_parts.append(f"Company website: {website}")
+    if domain:
+        context_parts.append(f"Company domain: {domain}")
+    if location_str:
+        context_parts.append(f"Primary location: {location_str}")
+    if extra_context:
+        context_parts.append(f"Additional context: {extra_context}")
+    context_block = "\n".join(context_parts)
 
-    # Targeted prompt designed to elicit useful results from
-    # responsible-AI-tuned models. We frame the task as "research
-    # analyst recall" rather than "find LinkedIn profiles" to avoid
-    # the refusal pattern triggered by the latter. Per user feedback
-    # 2026-06-16: prompt must be short, use all search variables, and
-    # request a parseable table.
-    prompt = f"""You are a sales research analyst with access to public business information through early 2025.
+    prompt = f"""# Role
+You are a senior B2B sales-intelligence researcher. You have access to public business information through early 2025. You do NOT have live internet access, but you should use your training knowledge of public leadership pages, press releases, SEC filings, LinkedIn profiles, and industry directories.
 
-For the company "{company_name}"{industry_str} based in {location_str}{radius_str}, list the executives and senior managers you are aware of.
+You must return results as a parseable JSON array. No markdown, no prose outside the JSON.
 
-Target titles (in priority order):
-- CEO / President / Owner / Founder
-- COO / Plant Manager / General Manager
-- VP (Operations, Manufacturing, Engineering, Sales, etc.)
-- Director (any function)
-- CFO / CTO / CIO (if known)
+# Company context
+{context_block}
 
-For each person, return a JSON object with these fields:
-- "name": full name (first + last)
-- "title": their known/recent title at this company
-- "linkedin": their LinkedIn profile URL in the form linkedin.com/in/<slug> (best guess, leave empty if you don't know)
-- "location": city, state they are based in
-- "confidence": 0.0-1.0 (how confident you are they are/were at this company)
-- "source": one short phrase describing how you know (e.g., "company website", "news article", "LinkedIn profile", "public filing")
+# Task
+Research and return senior people associated with this company.
 
-Rules:
-- Only list people you have reasonable confidence are/were at {company_name}.
-- Limit to 10 people max.
-- If you don't know the LinkedIn URL, set it to "" — we'll verify separately.
-- If you know nothing about this company, return an empty array [].
+Return a JSON array of objects. Each object must contain:
+- "full_name": first and last name (required)
+- "title": current or recent senior title at this company (required)
+- "linkedin_url": full LinkedIn URL if known, otherwise null or empty string
+- "location": city, state or region if known, otherwise null
+- "is_current_employee": true if likely still at this company, false if former/uncertain
+- "confidence": 0.0 to 1.0
+- "source": one-line explanation of how you know (e.g., "company leadership page", "LinkedIn profile", "press release", "SEC filing", "industry directory")
+- "reasoning": one-line note on ambiguity, reliability, or related entity
 
+# Target roles (in priority order)
+1. C-suite: CEO, President, COO, CFO, CTO, CIO, CMO, CSO, Chief Engineer
+2. Owners / Founders / Co-founders / Managing Partners
+3. Vice Presidents (Operations, Engineering, Sales, Business Development, Manufacturing, Supply Chain, Programs)
+4. Directors (Engineering, Operations, Programs, Quality, Business Development)
+5. General Managers, Plant Managers, Site Managers, Program Managers
+6. Senior technical fellows, principal engineers, or other visible senior leaders
+
+# Broadening rules
+- If the exact company name is ambiguous, list the most likely entity first and note ambiguity in reasoning.
+- If the company is a subsidiary, division, or operating unit of a larger parent, also include senior leaders at the parent who are relevant to this unit, and set confidence below 0.7.
+- If you cannot find anyone at this exact company, return people at closely related entities (parent, subsidiary, recent acquirer, co-located sister company) and set confidence below 0.6.
+- Do not invent people. If you truly know nothing, return an empty array [] and explain why in a single sentence before the JSON.
+- Do not return generic placeholders like "CEO" without a real name.
+- Return up to 15 people. Prioritize by seniority and confidence.
+
+# Confidence guidance
+- 0.85-1.0: Direct evidence (company leadership page, verified LinkedIn, public filing)
+- 0.65-0.84: Strong indirect evidence (well-known public company, credible news article)
+- 0.45-0.64: Only inferred from industry knowledge or related entity
+- 0.20-0.44: Weak or ambiguous signal
+- Below 0.20: do not return
+
+# Output format
 Return ONLY a JSON array. Example:
+
 [
-  {{"name": "Jane Smith", "title": "Chief Executive Officer", "linkedin": "linkedin.com/in/jane-smith-12345", "location": "San Diego, CA", "confidence": 0.9, "source": "company leadership page"}}
+  {{
+    "full_name": "Jane Smith",
+    "title": "Vice President of Operations",
+    "linkedin_url": "https://www.linkedin.com/in/jane-smith-12345",
+    "location": "San Diego, CA",
+    "is_current_employee": true,
+    "confidence": 0.88,
+    "source": "company leadership page",
+    "reasoning": "Listed as VP Operations on about/leadership page"
+  }}
 ]
 """
     response = ai_complete(prompt, operation="executive_search", gap_count=0, timeout=timeout)
@@ -1615,41 +1742,45 @@ Return ONLY a JSON array. Example:
 
     result = _extract_json_from_response(response)
     if not isinstance(result, list):
-        return None
+        # Sometimes the model returns a single object instead of a list
+        if isinstance(result, dict):
+            result = [result]
+        else:
+            return None
 
     cleaned = []
     for item in result:
         if not isinstance(item, dict):
             continue
-        # Accept both old field names (full_name) and new (name)
-        name = (item.get("name") or item.get("full_name") or "").strip()
+        name = (item.get("full_name") or item.get("name") or "").strip()
         if not name or len(name) < 3:
             continue
         title = (item.get("title") or "").strip()
-        # LinkedIn can be in "linkedin_url" or "linkedin" or empty
-        li_url = (
-            item.get("linkedin_url")
-            or item.get("linkedin")
-            or ""
-        )
+        # Require a title
+        if not title:
+            continue
+        li_url = item.get("linkedin_url") or item.get("linkedin") or ""
         if isinstance(li_url, str):
             li_url = li_url.strip()
         if li_url and not li_url.startswith("http"):
-            # Normalize: if AI returned just "linkedin.com/in/foo" add https://
-            li_url = "https://www." + li_url.lstrip("./")
+            li_url = "https://www.linkedin.com/in/" + li_url.lstrip("./")
+        if li_url and not li_url.startswith("https://www.linkedin.com/in/"):
+            li_url = ""
         location = (item.get("location") or "").strip()
         try:
             conf = float(item.get("confidence", 0.5))
         except (TypeError, ValueError):
             conf = 0.5
+        is_current = bool(item.get("is_current_employee", True))
+        reasoning = (item.get("reasoning") or item.get("source") or "").strip()
         cleaned.append({
             "full_name": name,
             "title": title,
             "linkedin_url": li_url,
             "location": location,
-            "is_current_employee": True,  # AI wouldn't suggest them otherwise
+            "is_current_employee": is_current,
             "confidence": conf,
-            "reasoning": (item.get("source") or item.get("reasoning") or "").strip(),
+            "reasoning": reasoning,
         })
 
     return cleaned

@@ -179,9 +179,8 @@ How to Use Lead Finder
 
 </div>
 
+<script src="/api-key-loader.js"></script>
 <script>
-const API_BASE = '/api';
-const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 let currentSession = null;
 let selectedPlaceId = null;
 
@@ -207,8 +206,8 @@ function loadSessionFromStorage() {
 async function loadStats() {
   try {
     const [statsData, aiUsage] = await Promise.all([
-      fetch(API_BASE+'/stats', {headers: {'X-LF-Key': API_KEY}}).then(r=>r.ok ? r.json() : {companies:0, contacts:0, sessions:0}),
-      fetch(API_BASE+'/ai/usage', {headers: {'X-LF-Key': API_KEY}}).then(r=>r.ok ? r.json() : {enabled: false, usage: {}}),
+      fetch(API_BASE+'/stats', {headers: {'X-LF-Key': requireApiKey()}}).then(r=>r.ok ? r.json() : {companies:0, contacts:0, sessions:0}),
+      fetch(API_BASE+'/ai/usage', {headers: {'X-LF-Key': requireApiKey()}}).then(r=>r.ok ? r.json() : {enabled: false, usage: {}}),
     ]);
     document.getElementById('statCompanies').textContent = statsData.companies || 0;
     document.getElementById('statContacts').textContent = statsData.contacts || 0;
@@ -248,7 +247,7 @@ async function doSearch() {
   try {
     const r = await fetch(API_BASE+'/search', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+      headers: {'Content-Type': 'application/json', 'X-LF-Key': requireApiKey()},
       body: JSON.stringify({
         industry, city, state, radius_miles: radius, max_results: maxResults,
         min_rating: minRating, min_reviews: minReviews,
@@ -274,7 +273,7 @@ async function doSearch() {
 
 async function loadResults(sk) {
   try {
-    const r = await fetch(API_BASE+'/session/'+sk+'/results', {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/session/'+sk+'/results', {headers: {'X-LF-Key': requireApiKey()}});
     const data = await r.json();
     const list = document.getElementById('resultsList');
     list.innerHTML = '';
@@ -324,11 +323,11 @@ async function discoverCompany(placeId, name, existingCount) {
   document.getElementById('discoverResult').classList.add('hidden');
   document.getElementById('discoverProgress').classList.remove('hidden');
   try {
-    const er = await fetch(API_BASE+'/company/'+placeId+'/enrich', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':API_KEY}});
+    const er = await fetch(API_BASE+'/company/'+placeId+'/enrich', {method:'POST', headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()}});
     const edata = await er.ok ? await er.json() : {};
     const ed = await fetch(API_BASE+'/discover/'+placeId+'/executives', {
       method:'POST',
-      headers:{'Content-Type':'application/json','X-LF-Key':API_KEY},
+      headers:{'Content-Type':'application/json','X-LF-Key':requireApiKey()},
       body: JSON.stringify({company_name: name, search_city: '', search_state: 'CA', search_radius_miles: 25})
     });
     const rdata = await ed.json();
@@ -363,7 +362,7 @@ async function discoverAll() {
   try {
     const r = await fetch(API_BASE+'/discover-batch', {
       method: 'POST',
-      headers: {'Content-Type':'application/json','X-LF-Key':API_KEY},
+      headers: {'Content-Type':'application/json','X-LF-Key':requireApiKey()},
       body: JSON.stringify({session_key: currentSession})
     });
     const d = await r.json();
@@ -431,7 +430,7 @@ function renderDiscoveryStage(job) {
 async function pollDiscoverJob(jobId) {
   if (!jobId) return;
   try {
-    const r = await fetch(API_BASE+'/discover-job/'+jobId, {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/discover-job/'+jobId, {headers: {'X-LF-Key': requireApiKey()}});
     const d = await r.json();
     const total = d.total || 0;
     const done = d.done || 0;
@@ -489,33 +488,42 @@ function toggleInstructions() {
   body.classList.toggle('active');
 }
 
-loadStats();
-
-// On page load, check for ?session=KEY in the URL and auto-load the session.
-// This is the target of /api/session/{key}/resume's redirect_url (Issue #4).
-// Fall back to sessionStorage (Issue #5) so navigating to another tab and
-// back doesn't wipe the search results.
-(function autoLoadSessionFromURL() {
+(async function bootstrap() {
   try {
-    const params = new URLSearchParams(window.location.search);
-    let sessionKey = params.get('session');
-    if (!sessionKey) {
-      sessionKey = loadSessionFromStorage();
-    }
-    if (!sessionKey) return;
-    // Set currentSession and load results
-    currentSession = sessionKey;
-    saveSessionToStorage(currentSession);
-    document.getElementById('currentSessionMsg').classList.add('hidden');
-    document.getElementById('sessionKeyDisplay').textContent = 'Session: ' + currentSession;
-    document.getElementById('sessionKeyDisplay').classList.remove('hidden');
-    document.getElementById('sessionActions').classList.remove('hidden');
-    showMsg('Resumed session ' + currentSession, 'info');
-    loadResults(currentSession);
-    // Clean the URL so a refresh doesn't re-trigger (replace, not push)
-    const clean = window.location.pathname;
-    window.history.replaceState({}, '', clean);
-  } catch(e) { console.error('autoLoadSessionFromURL failed:', e); }
+    await initApiKey();
+  } catch (e) {
+    console.error('Failed to load API key:', e);
+    showMsg('Failed to load API key: ' + e.message, 'error');
+    return;
+  }
+  loadStats();
+
+  // On page load, check for ?session=KEY in the URL and auto-load the session.
+  // This is the target of /api/session/{key}/resume's redirect_url (Issue #4).
+  // Fall back to sessionStorage (Issue #5) so navigating to another tab and
+  // back doesn't wipe the search results.
+  (function autoLoadSessionFromURL() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      let sessionKey = params.get('session');
+      if (!sessionKey) {
+        sessionKey = loadSessionFromStorage();
+      }
+      if (!sessionKey) return;
+      // Set currentSession and load results
+      currentSession = sessionKey;
+      saveSessionToStorage(currentSession);
+      document.getElementById('currentSessionMsg').classList.add('hidden');
+      document.getElementById('sessionKeyDisplay').textContent = 'Session: ' + currentSession;
+      document.getElementById('sessionKeyDisplay').classList.remove('hidden');
+      document.getElementById('sessionActions').classList.remove('hidden');
+      showMsg('Resumed session ' + currentSession, 'info');
+      loadResults(currentSession);
+      // Clean the URL so a refresh doesn't re-trigger (replace, not push)
+      const clean = window.location.pathname;
+      window.history.replaceState({}, '', clean);
+    } catch(e) { console.error('autoLoadSessionFromURL failed:', e); }
+  })();
 })();
 </script>
 </body>

@@ -50,8 +50,7 @@ th:nth-child(9),td:nth-child(9){width:15%;overflow:visible}
 .btn-blue{background:#38bdf8;color:#0f172a}
 .toggle-label{display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;color:#94a3b8;cursor:pointer;user-select:none}
 .toggle-label input{accent-color:#38bdf8}
-tr.deleted-row{opacity:0.5}
-tr.deleted-row td{text-decoration:line-through;color:#64748b}
+
 .trash-icon{cursor:pointer;font-size:0.75rem}
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:1000}
@@ -67,6 +66,20 @@ tr.deleted-row td{text-decoration:line-through;color:#64748b}
 .toast-success{background:#22c55e}
 .toast-error{background:#ef4444}
 @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+/* AI enrichment progress panel */
+.progress-panel{display:none;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem}
+.progress-panel.active{display:block}
+.progress-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem}
+.progress-title{font-size:0.9rem;font-weight:600;color:#38bdf8}
+.progress-status{display:inline-block;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600;text-transform:uppercase}
+.progress-status.running{background:#38bdf833;color:#38bdf8}
+.progress-status.completed{background:#22c55e33;color:#22c55e}
+.progress-status.failed{background:#ef444433;color:#ef4444}
+.progress-bar-bg{height:8px;background:#334155;border-radius:4px;overflow:hidden;margin-bottom:0.5rem}
+.progress-bar-fill{height:100%;background:#38bdf8;width:0%;transition:width 0.3s;border-radius:4px}
+.progress-bar-fill.completed{background:#22c55e}
+.progress-bar-fill.failed{background:#ef4444}
+.progress-meta{display:flex;justify-content:space-between;font-size:0.8rem;color:#94a3b8;gap:1rem}
 /* Sortable column headers (added 2026-06-16) */
 th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:1.1rem;transition:background 0.15s}
 th.sortable:hover{background:rgba(56,189,248,0.15);color:#38bdf8}
@@ -102,14 +115,20 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 <label style="font-size:0.8rem;color:#94a3b8;">Industry: <select id="filterIndustry" onchange="loadCompanies()"><option value="">All Industries</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">City: <select id="filterCity" onchange="loadCompanies()"><option value="">All Cities</option></select></label>
 <label style="font-size:0.8rem;color:#94a3b8;">State: <select id="filterState"><option value="">All States</option><option value="CA">CA</option></select></label>
+<label style="font-size:0.8rem;color:#94a3b8;">Session: <select id="filterSession" onchange="loadCompanies()"><option value="">All Sessions</option></select></label>
 <button class="btn" id="filterBtn">Filter</button>
-<label class="toggle-label"><input type="checkbox" id="showDeleted" /> Show Deleted</label>
 </div>
 <div id="bulkActions" style="display:none;align-items:center;gap:0.5rem;margin-bottom:0.5rem;padding:0.6rem 1rem;background:#1e293b;border-radius:6px;border:1px solid #334155;">
 <span style="color:#38bdf8;font-size:0.85rem;font-weight:600;" id="selectedCount">0 selected</span>
+<button class="btn btn-sm btn-purple" onclick="startAiEnrich()" title="Run full AI enrichment pipeline on selected companies">AI Enrich</button>
 <button class="btn btn-sm btn-green" onclick="bulkDiscover()">Bulk Discover</button>
 <button class="btn btn-sm btn-red" onclick="bulkDelete()">Bulk Delete</button>
 <button class="btn btn-sm btn-slate" onclick="clearSelection()">Clear Selection</button>
+</div>
+<div id="enrichProgress" class="progress-panel">
+<div class="progress-header"><span class="progress-title">AI Enrichment</span><span id="enrichStatus" class="progress-status running">running</span></div>
+<div class="progress-bar-bg"><div id="enrichBar" class="progress-bar-fill"></div></div>
+<div class="progress-meta"><span id="enrichStep">Starting...</span><span id="enrichCount">0 / 0</span></div>
 </div>
 <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
 <label style="font-size:0.8rem;color:#94a3b8;">Per page: <select id="perPage" onchange="loadCompanies()">
@@ -222,9 +241,8 @@ th.sortable.sort-desc::after{content:'▼';color:#38bdf8;opacity:1}
 </div>
 </div>
 
+<script src="/api-key-loader.js"></script>
 <script>
-const API_BASE = '/api';
-const API_KEY = 'lf_key_P9xZq3RvLm7YwT2hJm8FvNu4BcDEs6';
 
 // State
 let companiesData = [];
@@ -331,7 +349,7 @@ function formatBusinessType(c) {
 
 async function loadStats() {
   try {
-    const r = await fetch(API_BASE+'/stats', {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/stats', {headers: {'X-LF-Key': requireApiKey()}});
     if (!r.ok) return;
     const d = await r.json();
     document.getElementById('statCompanies').textContent = d.companies || 0;
@@ -342,7 +360,7 @@ async function loadStats() {
 
 async function loadCompanyDropdowns() {
   try {
-    const r = await fetch(API_BASE+'/companies/dropdowns', {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(API_BASE+'/companies/dropdowns', {headers: {'X-LF-Key': requireApiKey()}});
     if (!r.ok) return;
     const d = await r.json();
     const indSel = document.getElementById('filterIndustry');
@@ -354,6 +372,9 @@ async function loadCompanyDropdowns() {
     const stateSel = document.getElementById('filterState');
     stateSel.innerHTML = '<option value="">All States</option>' +
       (d.states||[]).map(v => '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>').join('');
+    const sessSel = document.getElementById('filterSession');
+    sessSel.innerHTML = '<option value="">All Sessions</option>' +
+      (d.sessions||[]).map(s => '<option value="'+escapeHtml(s.session_key)+'">'+escapeHtml(s.session_key)+' ('+escapeHtml(s.industry||'')+')</option>').join('');
   } catch(e) { console.error('dropdowns error:', e); }
 }
 
@@ -361,8 +382,6 @@ function renderRow(c) {
   const tr = document.createElement('tr');
   tr.dataset.companyId = c.id;
   tr.dataset.companyJson = JSON.stringify(c);
-  if (c.is_deleted) tr.classList.add('deleted-row');
-  // Note: is_deleted is no longer used — all deletes are permanent now
 
   // Checkbox
   const cbChecked = selectedCompanyIds.has(c.id) ? ' checked' : '';
@@ -399,11 +418,7 @@ function renderRow(c) {
     + '<button class="btn btn-sm btn-blue" data-action="get-emails" title="Derive emails from pattern">&#9993;</button>'
     + '<button class="btn btn-sm btn-amber" data-action="export-patterns" title="Export email patterns">&#8681;</button>';
 
-  if (c.is_deleted) {
-    // is_deleted no longer used — all deletes are permanent
-  } else {
-    actionsHtml += '<button class="btn btn-sm btn-red" data-action="delete-company" title="Permanently delete this company">&#10005;</button>';
-  }
+  actionsHtml += '<button class="btn btn-sm btn-red" data-action="delete-company" title="Permanently delete this company">&#10005;</button>';
 
   // Build full row as a single innerHTML (avoids DOM/innerHTML mixing)
   tr.innerHTML =
@@ -440,16 +455,16 @@ async function loadCompanies() {
   const industry = document.getElementById('filterIndustry').value.trim();
   const city = document.getElementById('filterCity').value.trim();
   const state = document.getElementById('filterState').value;
-  const showDeleted = document.getElementById('showDeleted').checked;
+  const session_key = document.getElementById('filterSession').value;
   const perPage = parseInt(document.getElementById('perPage').value) || 20;
   let url = API_BASE + '/companies?limit=' + perPage;
   if (industry) url += '&industry=' + encodeURIComponent(industry);
   if (city) url += '&city=' + encodeURIComponent(city);
   if (state) url += '&state=' + encodeURIComponent(state);
-  if (showDeleted) url += '&include_deleted=true';
+  if (session_key) url += '&session_key=' + encodeURIComponent(session_key);
   try {
     document.getElementById('pageInfo').textContent = 'Per page: ' + perPage;
-    const r = await fetch(url, {headers: {'X-LF-Key': API_KEY}});
+    const r = await fetch(url, {headers: {'X-LF-Key': requireApiKey()}});
     const data = await r.json();
     const tbody = document.getElementById('companiesTable');
     tbody.innerHTML = '';
@@ -511,7 +526,7 @@ async function bulkDelete() {
   try {
     const r = await fetch(API_BASE + '/companies/bulk-delete', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+      headers: {'Content-Type': 'application/json', 'X-LF-Key': requireApiKey()},
       body: JSON.stringify({ids})
     });
     const d = await r.json();
@@ -536,7 +551,7 @@ async function bulkDiscover() {
   try {
     const r = await fetch(API_BASE + '/companies/bulk-discover', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+      headers: {'Content-Type': 'application/json', 'X-LF-Key': requireApiKey()},
       body: JSON.stringify({ids})
     });
     const d = await r.json();
@@ -584,7 +599,7 @@ async function submitAddCompany() {
   try {
     const r = await fetch(API_BASE + '/companies', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+      headers: {'Content-Type': 'application/json', 'X-LF-Key': requireApiKey()},
       body: JSON.stringify(data)
     });
     const d = await r.json();
@@ -624,7 +639,7 @@ document.getElementById('companiesTable').addEventListener('click', async functi
       if (!confirm('Clear email pattern for ' + company.name + '?')) return;
       const r = await fetch(API_BASE + '/company/' + company.id, {
         method: 'PATCH',
-        headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+        headers: {'Content-Type': 'application/json', 'X-LF-Key': requireApiKey()},
         body: JSON.stringify({email_pattern: null, email_pattern_source: 'cleared', email_pattern_confidence: 0.0})
       });
       if (r.ok) {
@@ -641,7 +656,7 @@ document.getElementById('companiesTable').addEventListener('click', async functi
       try {
         const r = await fetch(API_BASE + '/company/' + company.id + '/discover-email-pattern', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+          headers: {'Content-Type': 'application/json', 'X-LF-Key': requireApiKey()},
           body: JSON.stringify({})
         });
         const d = await r.json();
@@ -671,7 +686,7 @@ document.getElementById('companiesTable').addEventListener('click', async functi
       try {
         const r = await fetch(API_BASE + '/discover/' + company.place_id + '/executives', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+          headers: {'Content-Type': 'application/json', 'X-LF-Key': requireApiKey()},
           body: JSON.stringify({})
         });
         const d = await r.json();
@@ -696,7 +711,7 @@ document.getElementById('companiesTable').addEventListener('click', async functi
       try {
         const r = await fetch(API_BASE + '/company/' + company.id + '/derive-emails', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+          headers: {'Content-Type': 'application/json', 'X-LF-Key': requireApiKey()},
           body: JSON.stringify({})
         });
         const d = await r.json();
@@ -725,7 +740,7 @@ document.getElementById('companiesTable').addEventListener('click', async functi
       try {
         const r = await fetch(API_BASE + '/company/' + company.id, {
           method: 'DELETE',
-          headers: {'X-LF-Key': API_KEY}
+          headers: {'X-LF-Key': requireApiKey()}
         });
         if (r.ok) {
           showToast(company.name + ' deleted', 'success');
@@ -762,7 +777,7 @@ document.getElementById('patSaveBtn').addEventListener('click', async function()
   }
   const r = await fetch(API_BASE + '/company/' + currentPatternCompanyId, {
     method: 'PATCH',
-    headers: {'Content-Type': 'application/json', 'X-LF-Key': API_KEY},
+    headers: {'Content-Type': 'application/json', 'X-LF-Key': requireApiKey()},
     body: JSON.stringify({email_pattern: pattern, email_pattern_source: source, email_pattern_confidence: 1.0})
   });
   if (r.ok) {
@@ -779,13 +794,169 @@ document.getElementById('patSaveBtn').addEventListener('click', async function()
 // Filter button
 document.getElementById('filterBtn').addEventListener('click', loadCompanies);
 
-// Show Deleted toggle
-document.getElementById('showDeleted').addEventListener('change', loadCompanies);
+// AI enrichment progress
+let enrichPollTimer = null;
+let enrichCurrentJobId = null;
+const ENRICH_LS_KEY = 'enrich_job_id';
+const ENRICH_SESSION_LS_KEY = 'enrich_session_key';
+
+function getEnrichSessionKey() {
+  return document.getElementById('filterSession').value;
+}
+
+function stageLabel(stage) {
+  if (!stage) return 'Processing...';
+  const idx = stage.indexOf(':');
+  const prefix = (idx > -1 ? stage.slice(0, idx) : stage).toLowerCase();
+  const company = idx > -1 ? stage.slice(idx + 1).trim() : '';
+  const map = {
+    website: 'Filling website',
+    pattern: 'Deep-researching email pattern',
+    pattern_deep_research: 'Deep-researching email pattern',
+    type: 'Determining business type',
+    sanity: 'Running sanity checks',
+    derive_emails: 'Deriving emails',
+    contacts: 'Finding contacts'
+  };
+  const label = map[prefix] || prefix;
+  return company ? label + ' for ' + company : label;
+}
+
+function formatEnrichStep(job) {
+  if (!job) return 'Starting...';
+  if (job.status === 'completed') return 'Completed';
+  if (job.status === 'failed') return 'Failed: ' + (job.message || '');
+  return job.current_stage ? stageLabel(job.current_stage) : 'Processing...';
+}
+
+function renderEnrichProgress(job) {
+  const panel = document.getElementById('enrichProgress');
+  const statusBadge = document.getElementById('enrichStatus');
+  const bar = document.getElementById('enrichBar');
+  const step = document.getElementById('enrichStep');
+  const count = document.getElementById('enrichCount');
+  if (!panel) return;
+  panel.classList.add('active');
+  const total = job.total || 0;
+  const done = job.done || 0;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  bar.style.width = pct + '%';
+  bar.className = 'progress-bar-fill ' + (job.status === 'completed' ? 'completed' : job.status === 'failed' ? 'failed' : '');
+  statusBadge.textContent = job.status || 'running';
+  statusBadge.className = 'progress-status ' + (job.status || 'running');
+  step.textContent = formatEnrichStep(job);
+  count.textContent = done + ' / ' + total;
+}
+
+function clearEnrichJob() {
+  if (enrichPollTimer) { clearInterval(enrichPollTimer); enrichPollTimer = null; }
+  enrichCurrentJobId = null;
+  localStorage.removeItem(ENRICH_LS_KEY);
+  localStorage.removeItem(ENRICH_SESSION_LS_KEY);
+  const panel = document.getElementById('enrichProgress');
+  if (panel) panel.classList.remove('active');
+}
+
+async function pollEnrichJob(jobId) {
+  try {
+    const r = await fetch(API_BASE + '/ai/backfill-job/' + encodeURIComponent(jobId), { headers: { 'X-LF-Key': requireApiKey() } });
+    if (!r.ok) return;
+    const d = await r.json();
+    const job = d.job || d;
+    renderEnrichProgress(job);
+    enrichCurrentJobId = jobId;
+    if (job.status === 'completed' || job.status === 'failed') {
+      clearEnrichJob();
+      showToast(job.status === 'completed' ? 'AI enrichment completed' : 'AI enrichment failed: ' + (job.message || 'unknown'), job.status === 'completed' ? 'success' : 'error');
+      loadCompanies();
+      loadStats();
+    }
+  } catch (e) { console.error('poll enrich error:', e); }
+}
+
+function startEnrichPolling(jobId) {
+  if (enrichPollTimer) clearInterval(enrichPollTimer);
+  enrichCurrentJobId = jobId;
+  localStorage.setItem(ENRICH_LS_KEY, jobId);
+  renderEnrichProgress({ status: 'running', done: 0, total: 0, current_stage: 'Starting' });
+  pollEnrichJob(jobId);
+  enrichPollTimer = setInterval(() => pollEnrichJob(jobId), 3000);
+}
+
+async function startAiEnrich() {
+  const ids = Array.from(selectedCompanyIds);
+  if (ids.length === 0) { showToast('Select at least one company', 'error'); return; }
+  const session_key = getEnrichSessionKey();
+  if (!session_key) { showToast('Select a session filter first to identify the session_key', 'error'); return; }
+  if (!confirm('Run full AI enrichment for ' + ids.length + ' companies?\n\nThis includes website, pattern, type, sanity, emails, and contacts.')) return;
+  try {
+    const r = await fetch(API_BASE + '/ai/backfill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-LF-Key': requireApiKey() },
+      body: JSON.stringify({ session_key, company_ids: ids, tasks: ['website', 'pattern', 'type', 'sanity', 'derive_emails', 'contacts'], only_missing: true, limit: 1000 })
+    });
+    const d = await r.json();
+    if (!r.ok) { showToast('AI Enrich failed: ' + (d.detail || 'unknown'), 'error'); return; }
+    const jobId = d.job_id;
+    if (!jobId) { showToast('No job_id returned', 'error'); return; }
+    localStorage.setItem(ENRICH_LS_KEY, jobId);
+    localStorage.setItem(ENRICH_SESSION_LS_KEY, session_key);
+    showToast(d.message || 'AI enrichment started (' + (d.total || ids.length) + ' companies)', 'success');
+    startEnrichPolling(jobId);
+  } catch (e) {
+    showToast('AI Enrich error: ' + e.message, 'error');
+  }
+}
+
+async function resumeEnrichPolling() {
+  const storedJobId = localStorage.getItem(ENRICH_LS_KEY);
+  if (storedJobId) {
+    try {
+      const r = await fetch(API_BASE + '/ai/backfill-job/' + encodeURIComponent(storedJobId), { headers: { 'X-LF-Key': requireApiKey() } });
+      if (r.ok) {
+        const d = await r.json();
+        const job = d.job || d;
+        if (job.status === 'completed' || job.status === 'failed') {
+          clearEnrichJob();
+          return;
+        }
+        startEnrichPolling(storedJobId);
+        return;
+      }
+    } catch (e) { console.error('resume stored job error:', e); }
+  }
+  const session_key = getEnrichSessionKey() || localStorage.getItem(ENRICH_SESSION_LS_KEY);
+  if (session_key) {
+    try {
+      const r = await fetch(API_BASE + '/ai/backfill-jobs?session_key=' + encodeURIComponent(session_key), { headers: { 'X-LF-Key': requireApiKey() } });
+      if (r.ok) {
+        const d = await r.json();
+        const active = (d.jobs || []).find(j => j.status !== 'completed' && j.status !== 'failed');
+        if (active && active.job_id) {
+          localStorage.setItem(ENRICH_LS_KEY, active.job_id);
+          localStorage.setItem(ENRICH_SESSION_LS_KEY, session_key);
+          startEnrichPolling(active.job_id);
+          return;
+        }
+      }
+    } catch (e) { console.error('resume by session error:', e); }
+  }
+  clearEnrichJob();
+}
 
 // Init
-loadStats();
-loadCompanyDropdowns();
-loadCompanies();
+(async function bootstrap() {
+  try {
+    await initApiKey();
+    loadStats();
+    loadCompanyDropdowns();
+    loadCompanies();
+    resumeEnrichPolling();
+  } catch (e) {
+    console.error('companies page bootstrap failed:', e);
+    alert('Failed to load API key: ' + e.message);
+  }
+})();
 </script>
 </body>
 </html>

@@ -15,7 +15,7 @@ Key rejection rules:
   - Multiple LinkedIn profiles → take the most complete one
 """
 
-import json, time, re, urllib.parse
+import json, time, re, urllib.parse, signal
 from pathlib import Path
 from typing import Optional
 
@@ -25,8 +25,70 @@ from lf_config import get
 from lf_search_providers import search, get_usage_summary
 from lf_geocode import haversine
 from lf_db import get_db, upsert_contact
+from lf_email_patterns import resolve_and_validate_email
+
+
+class _CandidateTimeout(Exception):
+    """Raised when verify_and_enrich_person exceeds its per-candidate budget."""
+    pass
+
+
+def _alarm_handler(signum, frame):
+    raise _CandidateTimeout("candidate verification exceeded time budget")
+
 
 BASE_DIR = Path(__file__).parent
+
+# ── H-1 (2026-07-26): ingest-time gate for departed / retired / former ──────
+# Titles matching this regex are not current employees and must not be inserted.
+DEPARTED_RE = re.compile(
+    r'\b(retired|former|departed|past|emeritus|self[- ]?employed|ex[- ])\b',
+    re.IGNORECASE,
+)
+
+
+def _is_departed_title(*candidates: str) -> bool:
+    """Return True if any of the given title strings matches DEPARTED_RE."""
+    for c in candidates:
+        if c and DEPARTED_RE.search(c):
+            return True
+    return False
+
+
+# ── H-3 (2026-07-26): slug-vs-name match for LinkedIn URLs ───────────────────
+def slug_matches_name(url: str, full_name: str) -> bool:
+    """
+    Return True if the /in/<slug> portion of `url` contains at least one name
+    token (length >= 3) from `full_name`. Prevents attaching a wrong person's
+    LinkedIn profile to a contact (e.g. /in/ramone-andrade-analyst for "Kris
+    Young").
+    """
+    if not url or not full_name:
+        return False
+    m = re.search(r'/in/([a-z0-9\-]+)', url.lower())
+    if not m:
+        return False
+    slug = m.group(1)
+    toks = [re.sub(r'[^a-z]', '', p) for p in full_name.lower().split()]
+    return any(len(t) >= 3 and t in slug for t in toks)
+
+
+# ── H-4 (2026-07-26): name-token check before storing a LinkedIn snippet ────
+def _snippet_mentions_person(snippet: str, full_name: str) -> bool:
+    """
+    Return True if both the first AND last name tokens of `full_name` appear in
+    `snippet` (case-insensitive). Guards against storing a snippet that
+    describes a different person.
+    """
+    if not snippet or not full_name:
+        return False
+    snippet_l = snippet.lower()
+    parts = [p for p in full_name.lower().split() if len(p) >= 3]
+    if len(parts) < 2:
+        # Single-token or very short name: require the available token(s).
+        return all(p in snippet_l for p in parts) if parts else False
+    first, last = parts[0], parts[-1]
+    return first in snippet_l and last in snippet_l
 
 
 def google_validate_person(name: str, company_name: str, min_results: int = 1, timeout: int = 8) -> tuple[bool, str]:
@@ -769,6 +831,206 @@ def scrape_company_leadership(website: str, company_name: str) -> tuple[list[dic
     return people, leadership_url
 
 
+# ── Broad name/title extraction for non-LinkedIn search results ─────────────
+
+# Regex pattern to extract "Name - Title" or "Title — Name" from search result titles.
+# Examples: "Kathy Warden - Chairman & CEO | Northrop Grumman"
+#           "Robert Hamilton - CEO at Hamilton Sundstrand"
+NAME_TITLE_DELIMITERS = r'[\s\-—–:|·•,]+'
+
+def _looks_like_person_name(name: str) -> bool:
+    """Use existing name validator plus extra checks."""
+    if not name or not is_valid_name(name):
+        return False
+    name_lower = name.lower().strip()
+    if name_lower in GENERIC_TITLES_AS_NAMES:
+        return False
+    if any(w in GENERIC_TITLES_AS_NAMES for w in name_lower.split()):
+        return False
+    # Reject known non-person bigrams/trigrams
+    if name_lower in _NON_PERSON_NAMES:
+        return False
+    # Reject if any word is an org word (strong signal it's not a person)
+    if any(w in _ORG_WORDS_AS_NAME for w in name_lower.split()):
+        return False
+    return True
+
+
+# Common words in organization/event names that get mis-parsed as part of a person name
+_ORG_WORDS_AS_NAME = {
+    'foundation', 'association', 'conference', 'summit', 'forum', 'institute',
+    'council', 'society', 'organization', 'committee', 'board', 'university',
+    'college', 'school', 'center', 'centre', 'group', 'team', 'division',
+    'department', 'office', 'bureau', 'agency', 'laboratory', 'lab',
+    'international', 'national', 'global', 'world', 'american', 'european',
+    'pacific', 'atlantic', 'defense', 'security', 'aerospace', 'aircraft',
+    'systems', 'solutions', 'technologies', 'services', 'industries', 'company',
+    'corporation', 'inc', 'llc', 'ltd', 'co', 'corp',
+}
+
+# Non-person bigrams/trigrams that the regex name extractor commonly mistakes for people
+_NON_PERSON_NAMES = {
+    'san diego', 'san francisco', 'los angeles', 'new york', 'las vegas',
+    'santa ana', 'santa monica', 'palo alto', 'menlo park', 'redondo beach',
+    'product development', 'business development', 'software engineering',
+    'human resources', 'customer service', 'quality assurance', 'operations',
+    'engineering services', 'view similar', 'quick apply', 'ata engineering',
+}
+
+
+def _clean_title(title: str) -> str:
+    """Strip trailing junk from a title extracted from search text."""
+    if not title:
+        return ""
+    # Stop at common separators that introduce extra context
+    for delim in [
+        ' | ', ' · ', ' - ', ' – ', ' — ', ' • ', '  ', ' at ', ', ', ' |',
+        '. ', '? ', '! ', '; ', '\n', ' (',
+    ]:
+        if delim in title:
+            title = title.split(delim)[0]
+    title = title.strip(r' \-—–:|·•,')
+    # Remove trailing word "at" safely
+    if title.lower().endswith(' at'):
+        title = title[:-3]
+    title = title.strip(r' \-—–:|·•,').removesuffix(' at').strip()
+    # Hard cap: truncate at last complete word before 60 chars
+    if len(title) > 60:
+        truncated = title[:60]
+        if ' ' in truncated:
+            title = truncated.rsplit(' ', 1)[0]
+        else:
+            title = truncated
+    return title
+
+
+def _extract_name_title_from_text(text: str, company_name: str = "") -> list[tuple[str, str]]:
+    """
+    Extract (name, title) tuples from free text such as search result titles
+    or directory page snippets. Returns a deduplicated list.
+    """
+    if not text:
+        return []
+    candidates = []
+
+    # Name: 2-4 words, each capitalized or an initial (e.g. "J. P. Morgan" or "Jack s. Flowers")
+    # Note: we allow lowercase initials like "s." because directory pages sometimes use them.
+    name_pat = r'([A-Z][a-zA-Z]*(?:\s+(?:[A-Z][a-zA-Z]*|[A-Za-z]\.|\d+)){1,3})'
+
+    # Recognized title keywords; title candidate must contain at least one
+    title_keywords = [
+        "chief executive officer", "chief financial officer", "chief operating officer",
+        "chief technology officer", "chief information officer", "chief marketing officer",
+        "chief revenue officer", "chief people officer", "chief human resources officer",
+        "chief scientific officer", "chief strategy officer", "chief legal officer",
+        "chief product officer", "chief business officer",
+        "ceo", "cfo", "coo", "cto", "cio", "cmo", "chro", "cro", "cso", "clo", "cpo", "cbo",
+        "president", "vice president", "vp", "senior vp", "executive vp", "sr vp",
+        "general manager", "director", "senior director", "executive director",
+        "chairman", "chairwoman", "chair", "founder", "co-founder", "owner", "partner",
+        "head of", "lead", "leader", "executive", "management", "manager", "engineering",
+        "engineer", "scientist", "officer",
+        "principal", "associate", "analyst", "specialist", "coordinator",
+    ]
+    title_kw_re = re.compile(r'\b(' + r'|'.join(re.escape(k) for k in title_keywords) + r')\b', re.IGNORECASE)
+
+    # Helper: is a title fragment plausible?
+    def _is_plausible_title(t):
+        if not t or len(t) > 90:
+            return False
+        return bool(title_kw_re.search(t))
+
+    # Pattern A: "Name [delim] TitleFragment"
+    # Title fragment extends up to a natural boundary or 80 chars
+    for m in re.finditer(
+        name_pat + r'\s*[\-—–:|·•,]\s*([^\-—–:|·•\n]{2,80})',
+        text
+    ):
+        name = m.group(1).strip()
+        title = _clean_title(m.group(2))
+        if _is_plausible_title(title):
+            candidates.append((name, title))
+
+    # Pattern B: "TitleFragment [delim] Name"
+    for m in re.finditer(
+        r'(?:^|[\s\-—–:,])([^\-—–:|·•\n]{2,60})\s*[\-—–:,]+\s*' + name_pat,
+        text
+    ):
+        title = _clean_title(m.group(1))
+        name = m.group(2).strip()
+        if _is_plausible_title(title):
+            candidates.append((name, title))
+
+    # Pattern C: "Name, Title" (comma only, title follows)
+    for m in re.finditer(
+        name_pat + r',\s*([^\-—–:|·•\n]{2,80})',
+        text
+    ):
+        name = m.group(1).strip()
+        title = _clean_title(m.group(2))
+        if _is_plausible_title(title):
+            candidates.append((name, title))
+
+    # Pattern D: "Name at Company" is not safe to parse generically because the
+    # regex often swaps name/title. We disable it; Patterns A-C already cover the
+    # common "Name - Title" / "Title - Name" cases found in search snippets.
+    pass
+
+    # Filter and dedupe
+    seen = set()
+    results = []
+    company_lower = company_name.lower()
+    for name, title in candidates:
+        name_lower = name.lower()
+        if name_lower in seen:
+            continue
+        if not _looks_like_person_name(name):
+            continue
+        # Reject if title is just the company name
+        if company_lower and company_lower in title.lower() and len(title) < len(company_name) + 10:
+            continue
+        # Reject incoherent/garbage titles
+        if not _is_plausible_title(title):
+            continue
+        if len(title) > 90 or '?' in title:
+            continue
+        seen.add(name_lower)
+        results.append((name, normalize_title(title)))
+    return results
+
+
+_EXECUTIVE_DIRECTORY_DOMAINS = {
+    "craft.co", "rocketreach.co", "theofficialboard.com",
+    "cbinsights.com", "zoominfo.com", "owler.com",
+    "leadferret.com", "datanyze.com", "mattermark.com",
+    "buzzfile.com", "manta.com", "dnb.com", "corporationwiki.com",
+}
+
+
+def _extract_from_directory_page(url: str, company_name: str) -> list[dict]:
+    """
+    Fetch an executive directory page and extract people + titles.
+    Returns list of {name, title, source_url}.
+    """
+    domain = urllib.parse.urlparse(url).netloc.lower().replace("www.", "")
+    if not any(d in domain for d in _EXECUTIVE_DIRECTORY_DOMAINS):
+        return []
+    html = _fetch_page_content(url)
+    if not html:
+        return []
+    text = re.sub(r'<[^>]+>', ' ', html)
+    text = re.sub(r'\s+', ' ', text).strip()
+    people = []
+    seen = set()
+    for name, title in _extract_name_title_from_text(text, company_name):
+        key = (name.lower(), title.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        people.append({"name": name, "title": title, "source_url": url})
+    return people
+
+
 # ── Step 2: Verify Each Person on LinkedIn ───────────────────────────────────
 
 def is_valid_linkedin_profile(url: str, snippet: str) -> bool:
@@ -811,6 +1073,232 @@ def is_valid_linkedin_profile(url: str, snippet: str) -> bool:
     return True
 
 
+def verified_linkedin_url(
+    candidate_url: str,
+    full_name: str,
+    company_name: str,
+    search_state: str = "",
+    timeout: int = 20,
+) -> dict:
+    """
+    Strict gate: returns a dict with `confirmed: bool` and `reason: str` for a
+    candidate LinkedIn URL. Confirmation requires the URL to appear in an
+    INDEPENDENT SearXNG search that matches the person and (ideally) the
+    company. This is the safety net that stops hallucinated URLs.
+
+    Pass conditions (in priority order):
+      1. SearXNG site:linkedin.com/in search for "name" "company" returns the
+         exact URL (or a path-equivalent /in/<slug>-<id>/) in the top 5 hits.
+      2. SearXNG site:linkedin.com/in search for "name" (no company) returns
+         the URL AND the snippet contains a name match AND the title/snippet
+         references company_name (or any of its name variants).
+
+    Failure cases (returns confirmed=False with reason):
+      - URL not on LinkedIn or is a company page
+      - URL is structurally invalid (no /in/<slug>/ path)
+      - URL does not appear in any independent SearXNG hit
+      - SearXNG hit exists but snippet has no name match
+      - SearXNG hit exists but no company-name token in snippet
+    """
+    if not candidate_url or "linkedin.com/in/" not in candidate_url or "/company/" in candidate_url:
+        return {"confirmed": False, "reason": "not_a_linkedin_profile_url"}
+    # Normalize trailing slash and query
+    norm = re.sub(r"\?.*", "", candidate_url).rstrip("/")
+    # Path must be /in/<slug> or /in/<slug>-<id>
+    path = norm.split("linkedin.com")[-1]
+    if not re.search(r"^/in/[A-Za-z0-9_\-]+/?$", path):
+        return {"confirmed": False, "reason": "invalid_linkedin_path"}
+
+    # Independently search for the URL via SearXNG
+    try:
+        from lf_search_providers import search as web_search
+    except Exception:
+        web_search = None  # type: ignore
+
+    if not web_search:
+        return {"confirmed": False, "reason": "search_unavailable"}
+
+    # Build a name-only-and-company query
+    queries = [
+        f'"{full_name}" "{company_name}" site:linkedin.com/in',
+        f'"{full_name}" site:linkedin.com/in',
+    ]
+    slug = path.strip("/").split("/")[-1]  # the slug portion
+
+    hits = []
+    for q in queries:
+        try:
+            results, _provider = web_search(q, timeout=timeout)
+        except Exception:
+            continue
+        for r in results:
+            url = (r.get("url") or "").rstrip("/")
+            if "linkedin.com/in/" not in url or "/company/" in url:
+                continue
+            # Check if the candidate slug (or a 5+ char prefix) appears in the URL
+            r_slug = re.sub(r"\?.*", "", url).rstrip("/").split("linkedin.com/in/")[-1].split("/")[0]
+            slug_match = (
+                r_slug == slug
+                or r_slug.startswith(slug[:5])
+                or slug.startswith(r_slug[:5])
+            )
+            if slug_match:
+                snippet = (r.get("snippet") or r.get("content") or "").lower()
+                name_parts = [p.lower() for p in re.split(r"\s+", full_name) if len(p) > 1]
+                # Name in snippet (any part matches)
+                name_match = any(p in snippet for p in name_parts)
+                # Company (or any first word of it) in snippet
+                company_tokens = [t for t in re.split(r"[\s,]+", company_name) if len(t) > 2]
+                company_match = any(t.lower() in snippet for t in company_tokens)
+                hits.append({
+                    "url": url,
+                    "slug": r_slug,
+                    "name_match": name_match,
+                    "company_match": company_match,
+                    "snippet": (r.get("snippet") or "")[:200],
+                })
+
+    if not hits:
+        return {"confirmed": False, "reason": "url_not_in_independent_search"}
+    # Best hit must have name match; company match preferred but not required
+    best = sorted(hits, key=lambda h: (h["name_match"], h["company_match"]), reverse=True)[0]
+    if not best["name_match"]:
+        return {
+            "confirmed": False,
+            "reason": "name_not_in_snippet",
+            "slug": best["slug"],
+            "snippet": best["snippet"],
+        }
+    return {
+        "confirmed": True,
+        "reason": "url_in_independent_search",
+        "company_match": best["company_match"],
+        "snippet": best["snippet"],
+    }
+
+
+def cascading_linkedin_search(
+    full_name: str,
+    company_name: str,
+    company_website: str = "",
+    search_state: str = "",
+    on_step=None,
+    timeout: int = 20,
+) -> dict:
+    """
+    Escalator: progressively broader SearXNG queries to find a real LinkedIn
+    profile URL. Returns:
+      {
+        "url": str | None,
+        "snippet": str,
+        "company_match": bool,
+        "confidence": float,
+        "method": str,            # which step succeeded
+        "attempts": list[dict],   # all attempts (for debug)
+      }
+
+    Step ladder (broadening):
+      1. "name" "company" site:linkedin.com/in
+      2. "name" site:linkedin.com/in
+      3. "firstname lastname" "company" (no site: filter)
+      4. "name" "company" (no site:)
+      5. firstname.lastname (raw slug search via company domain context)
+
+    Each step runs once with timeout. The first step that returns a real
+    LinkedIn profile URL with a name-matching snippet wins. A step that finds a
+    URL but with no name match in the snippet is REJECTED — we keep climbing.
+    """
+    result = {
+        "url": None,
+        "snippet": "",
+        "company_match": False,
+        "confidence": 0.0,
+        "method": "none",
+        "attempts": [],
+    }
+    try:
+        from lf_search_providers import search as web_search
+    except Exception:
+        if on_step: on_step("search_unavailable", "SearXNG not available")
+        return result
+
+    name_parts = [p for p in re.split(r"\s+", full_name.strip()) if len(p) > 1]
+    if not name_parts:
+        return result
+    first = name_parts[0]
+    last = name_parts[-1] if len(name_parts) > 1 else ""
+
+    company_first_token = (re.split(r"[\s,]+", company_name.strip())[0] if company_name else "").strip()
+    domain_token = ""
+    if company_website:
+        try:
+            from urllib.parse import urlparse
+            domain_token = (urlparse(company_website).netloc or "").replace("www.", "")
+        except Exception:
+            domain_token = ""
+
+    steps = [
+        ("n+c", f'"{full_name}" "{company_name}" site:linkedin.com/in'),
+        ("n",   f'"{full_name}" site:linkedin.com/in'),
+        ("n+c_nosite", f'"{full_name}" "{company_name}"'),
+        ("f.l+c", f'"{first} {last}" "{company_name}" linkedin'),
+        ("n+domain", f'"{full_name}" "{domain_token}" linkedin' if domain_token else None),
+        ("broader", f'"{first}" "{last}" "{company_first_token}"' if company_first_token else None),
+    ]
+
+    for method, query in steps:
+        if not query:
+            continue
+        attempt = {"method": method, "query": query, "hits": 0, "best_url": "", "best_name_match": False, "best_company_match": False}
+        if on_step:
+            on_step(method, query)
+        try:
+            results, provider = web_search(query, timeout=timeout)
+        except Exception as e:
+            attempt["error"] = str(e)
+            result["attempts"].append(attempt)
+            continue
+        attempt["provider"] = provider
+        for r in results:
+            url = (r.get("url") or "")
+            if "linkedin.com/in/" not in url or "/company/" in url:
+                continue
+            clean_url = re.sub(r"\?.*", "", url).rstrip("/")
+            snippet = (r.get("snippet") or r.get("content") or "").lower()
+            # Name match: at least one significant name part
+            name_hit = any(p.lower() in snippet for p in name_parts if len(p) > 1)
+            if not name_hit:
+                continue
+            attempt["hits"] += 1
+            if not attempt["best_url"]:
+                attempt["best_url"] = clean_url
+                attempt["best_name_match"] = True
+                # Company match
+                if company_name:
+                    company_tokens = [t for t in re.split(r"[\s,]+", company_name) if len(t) > 2]
+                    attempt["best_company_match"] = any(t.lower() in snippet for t in company_tokens)
+                attempt["snippet"] = (r.get("snippet") or "")[:200]
+        result["attempts"].append(attempt)
+        if attempt.get("best_url") and attempt.get("best_name_match"):
+            result["url"] = attempt["best_url"]
+            result["snippet"] = attempt.get("snippet", "")
+            result["company_match"] = attempt.get("best_company_match", False)
+            result["method"] = method
+            # Confidence tier
+            tier = {
+                "n+c": 0.90,
+                "n": 0.65,
+                "n+c_nosite": 0.70,
+                "f.l+c": 0.75,
+                "n+domain": 0.80,
+                "broader": 0.50,
+            }.get(method, 0.40)
+            result["confidence"] = tier if result["company_match"] else max(0.0, tier - 0.20)
+            return result
+
+    return result
+
+
 def search_linkedin_verification(
     full_name: str,
     company_name: str,
@@ -827,7 +1315,7 @@ def search_linkedin_verification(
     # Build precise query
     query = f'"{full_name}" "{company_name}" site:linkedin.com/in'
     try:
-        raw_results, provider = search(query, timeout=20)
+        raw_results, provider = search(query, timeout=8)
     except Exception as e:
         print(f"[executives] Search error for {full_name}: {e}")
         return results_list
@@ -1331,9 +1819,24 @@ def discover_executives(
     # ── Step 3: Save contacts ──────────────────────────────────────────────
     saved = []
     for contact in verified_contacts:
+        # H-1 (2026-07-26): reject departed / retired / former / emeritus titles
+        # at ingest. verify_person_on_linkedin does not run the AI
+        # is_current_employee gate, so enforce the title regex here.
+        title = (contact.get("title") or "").strip()
+        ai_verified_title = (contact.get("ai_verified_title") or "").strip()
+        if _is_departed_title(title, ai_verified_title):
+            print(
+                f"[executives]   ✗ Departed/retired title for {contact.get('full_name','')}: "
+                f"'{title}' / '{ai_verified_title}'; skipping insert"
+            )
+            continue
         contact_id = upsert_contact(company_id, contact)
         if contact_id > 0:
             saved.append(contact)
+            try:
+                resolve_and_validate_email(contact_id, source="search_ingest")
+            except Exception as e:
+                print(f"[executives] Email chain failed for contact {contact_id}: {e}")
 
     local_count = sum(1 for c in saved if c.get("is_local"))
     hq_count = sum(1 for c in saved if c.get("hq_contact"))
@@ -1360,19 +1863,19 @@ def discover_executives_ai_first(
     radius_miles: int = 25,
     enable_pixelrag_scrape: bool = False,
     ai_timeout_s: int = 60,
+    per_candidate_timeout_s: int = 30,
 ) -> list[dict]:
     """
-    AI-first executive discovery (Issue #2: AI first per user spec).
+    AI-first executive discovery.
 
-    PHASE 1: AI search runs as long as it needs (no internal timeout).
-             Accepts whatever AI returns — could be 1 or 10 contacts.
-    PHASE 2: SearXNG fallback (no validation) if AI returned nothing.
-    PHASE 3: Save all contacts as-is. User filters in the UI.
-
-    Per user feedback 2026-06-16:
-    - Don't fight the AI timeout. Let it run.
-    - Per-contact AI research is the real bottleneck — SKIP it.
-    - Don't validate. Save what we get.
+    PHASE 1: AI search for senior people at the company.
+    PHASE 2: Website leadership page if AI returns nothing.
+    PHASE 3: Full-provider search fallback if AI + website return nothing.
+    PHASE 4: Layered verification for every candidate:
+             - Search for real LinkedIn profile
+             - Validate title/company from snippet or press evidence
+             - AI verification + title cleaning + location/phone enrichment
+             - Save only verified contacts.
     """
     if not company_name:
         print("[executives] No company name, skipping")
@@ -1383,17 +1886,28 @@ def discover_executives_ai_first(
 
     all_contacts = []
 
+    # Build broadening context for AI search
+    domain = ""
+    if website:
+        domain = extract_domain(website) or ""
+    # Simple name variants: stripped suffix and first-letter abbreviations
+    name_variants = _build_name_variants(company_name)
+    # No parent-company lookup yet; empty placeholder
+    parent_company = ""
+
     # ── PHASE 1: AI search — let it run as long as needed ──────────────
     ai_suggestions = []
     if ai_enabled():
         try:
-            # No future.result timeout — let the AI take as long as it
-            # needs. The endpoint's outer deadline is the only cap.
             ai_suggestions = ai_search_linkedin_executives(
                 company_name=company_name,
                 industry=industry,
                 city=search_city,
                 state=search_state,
+                website=website,
+                domain=domain,
+                name_variants=name_variants,
+                parent_company=parent_company,
                 radius_miles=radius_miles,
                 timeout=ai_timeout_s,
             ) or []
@@ -1425,16 +1939,20 @@ def discover_executives_ai_first(
         first = parts[0] if parts else ""
         last = parts[1] if len(parts) > 1 else ""
 
+        if not title:
+            print(f"[executives]   ✗ {full_name} skipped: no title")
+            continue
+
         contact = {
             "first_name": first,
             "last_name": last,
             "full_name": full_name,
-            "title": title or "Executive",  # placeholder if AI didn't return title
+            "title": title,
             "linkedin_url": li_url,
             "is_local": is_local,
             "hq_contact": hq_contact,
             "confidence_score": max(0.5, ai_conf),  # floor at 0.5
-            "data_provenance": "AI_PRIMARY",
+            "data_provenance": f"AI_PRIMARY:{sug.get('source','ai_search')}",
             "source_primary": "ai",
             "ai_verified_title": title,
             "ai_title_confidence": ai_conf,
@@ -1445,9 +1963,40 @@ def discover_executives_ai_first(
         all_contacts.append(contact)
         print(f"[executives]   ✓ {full_name} | {title or 'Executive'} | {location} | conf={ai_conf:.2f}")
 
-    # ── PHASE 2: SearXNG fallback if AI gave us nothing ─────────────────
+    # ── PHASE 2: Website leadership page (authoritative, fast) ───────────
+    if not all_contacts and website:
+        try:
+            website_people, leadership_url = scrape_company_leadership(website, company_name)
+            for p in website_people:
+                full_name = p.get("name", "").strip()
+                if not full_name or not _looks_like_person_name(full_name):
+                    continue
+                title = p.get("title", "").strip() or "Executive"
+                title = normalize_title(title)
+                parts = full_name.split(" ", 1)
+                first = parts[0] if parts else ""
+                last = parts[1] if len(parts) > 1 else ""
+                contact = {
+                    "first_name": first,
+                    "last_name": last,
+                    "full_name": full_name,
+                    "title": title,
+                    "linkedin_url": p.get("linkedin_url", ""),
+                    "is_local": 1,
+                    "hq_contact": 0,
+                    "confidence_score": p.get("confidence_score", 0.85),
+                    "data_provenance": p.get("data_provenance", f"WEBSITE:{leadership_url}"),
+                    "source_primary": "website",
+                    "title_from_website": title,
+                }
+                all_contacts.append(contact)
+                print(f"[executives]   ✓ website: {full_name} | {title}")
+        except Exception as e:
+            print(f"[executives] Website leadership scrape failed (non-fatal): {e}")
+
+    # ── PHASE 3: Fallback to full-provider search if AI + website returned nothing ──
     if not all_contacts:
-        print(f"[executives] AI returned nothing; falling back to SearXNG for {company_name}")
+        print(f"[executives] AI + website returned nothing; falling back to full search for {company_name}")
         return _enrich_from_linkedin_fallback(
             company_name=company_name,
             company_id=company_id,
@@ -1457,19 +2006,382 @@ def discover_executives_ai_first(
             search_lat=search_lat,
             search_lng=search_lng,
             radius_miles=radius_miles,
+            per_candidate_timeout_s=per_candidate_timeout_s,
         )
 
-    # ── PHASE 3: Save all contacts ──────────────────────────────────────
+    # ── PHASE 3: Verify and save contacts ──────────────────────────────
     saved = []
     for contact in all_contacts:
-        contact_id = upsert_contact(company_id, contact)
-        if contact_id > 0:
-            saved.append(contact)
+        # Clean/normalize title for AI and website-sourced contacts (and for
+        # any later AI-verified values in verify_and_enrich_person). This
+        # runs the title through _clean_title + normalize_title BEFORE
+        # sending to the LinkedIn search and the AI verifier, so all
+        # downstream stages see a cleaned title.
+        contact["title"] = _clean_title(normalize_title(contact.get("title", "")))
+        if not contact["title"]:
+            print(f"[executives]   ✗ {contact.get('full_name','')} rejected: title empty after clean")
+            continue
+        verified = verify_and_enrich_person(
+            contact,
+            company_name=company_name,
+            company_id=company_id,
+            website=website,
+            search_city=search_city,
+            search_state=search_state,
+            search_lat=search_lat,
+            search_lng=search_lng,
+            radius_miles=radius_miles,
+            per_candidate_timeout_s=per_candidate_timeout_s,
+        )
+        if not verified:
+            continue
+        if _is_valid_contact_to_save(verified, company_name):
+            contact_id = upsert_contact(company_id, verified)
+            if contact_id > 0:
+                saved.append(verified)
+                try:
+                    resolve_and_validate_email(contact_id, source="search_ingest")
+                except Exception as e:
+                    print(f"[executives] Email chain failed for contact {contact_id}: {e}")
 
     local_count = sum(1 for c in saved if c.get("is_local"))
     hq_count = sum(1 for c in saved if c.get("hq_contact"))
     print(f"[executives] {company_name}: {len(saved)} contacts saved ({local_count} local, {hq_count} HQ)")
     return saved
+
+
+# ── AI-First Executive Discovery (added 2026-06-16) ──────────────────
+# Per user feedback: use AI first for LinkedIn searching, then
+# PixelRAG only if scraping is needed for latest experience/role/title
+# and location. The website leadership scrape and SearXNG are
+# FALLBACKS — invoked only when AI returns nothing useful.
+
+
+def discover_executives_ai_first(
+    company_name: str,
+    company_id: int,
+    website: str = "",
+    search_city: str = "",
+    search_state: str = "CA",
+    search_lat: float = 0.0,
+    search_lng: float = 0.0,
+    radius_miles: int = 25,
+    per_candidate_timeout_s: int = 30,
+) -> Optional[dict]:
+    """
+    Layered verification and enrichment for a single person candidate.
+
+    1. Search for a real LinkedIn profile.
+    2. If found, validate snippet for company/title/location evidence.
+    3. If no LinkedIn, search press/news to verify person + company + title.
+    4. Use AI to verify association, clean title, and enrich location/phone.
+    5. Return verified contact or None.
+    """
+    full_name = contact.get("full_name", "").strip()
+    original_title = contact.get("title", "").strip()
+    if not full_name or not original_title:
+        return None
+
+    print(f"[executives] verifying {full_name} ({original_title}) at {company_name}")
+
+    # Hard per-candidate deadline (monotonic clock; safe in worker threads).
+    # We use a deadline rather than SIGALRM because SIGALRM only works in the
+    # main thread of the main interpreter and this function may run in a
+    # worker thread (see lf_server.py backfill worker).
+    deadline = (time.monotonic() + per_candidate_timeout_s) if per_candidate_timeout_s > 0 else None
+
+    try:
+        return _verify_and_enrich_person_impl(
+            contact=contact,
+            company_name=company_name,
+            company_id=company_id,
+            website=website,
+            search_city=search_city,
+            search_state=search_state,
+            search_lat=search_lat,
+            search_lng=search_lng,
+            radius_miles=radius_miles,
+            deadline_monotonic=deadline,
+        )
+    except _CandidateTimeout:
+        print(f"[executives]   ⏱ {full_name} verification exceeded {per_candidate_timeout_s}s budget; skipping")
+        return None
+
+
+def _verify_and_enrich_person_impl(
+    contact: dict,
+    company_name: str,
+    company_id: int,
+    website: str = "",
+    search_city: str = "",
+    search_state: str = "CA",
+    search_lat: float = 0.0,
+    search_lng: float = 0.0,
+    radius_miles: int = 25,
+    deadline_monotonic: Optional[float] = None,
+) -> Optional[dict]:
+    """Inner body of verify_and_enrich_person (extracted for timeout wrapper)."""
+    full_name = contact.get("full_name", "").strip()
+    original_title = contact.get("title", "").strip()
+    if not full_name or not original_title:
+        return None
+
+    def _budget_left() -> float:
+        """Seconds remaining in the per-candidate budget, or inf if no deadline."""
+        if deadline_monotonic is None:
+            return float("inf")
+        return max(0.0, deadline_monotonic - time.monotonic())
+
+    def _check_deadline(step: str) -> None:
+        """Raise _CandidateTimeout if we've blown the per-candidate budget."""
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise _CandidateTimeout(f"{step} exceeded deadline")
+
+    # --- Layer 1: direct LinkedIn profile search ---
+    linkedin_url = ""
+    linkedin_snippet = ""
+    location = contact.get("location", "")
+    verified_title = original_title
+
+    try:
+        from lf_search_providers import search as web_search
+        queries = [
+            f'"{full_name}" "{company_name}" site:linkedin.com/in',
+            f'"{full_name}" site:linkedin.com/in',
+        ]
+        if website:
+            domain = extract_domain(website) or ""
+            if domain:
+                queries.append(f'"{full_name}" "{domain}" site:linkedin.com/in')
+        for q in queries:
+            # Bail out of LinkedIn search if we've blown the per-candidate budget
+            _check_deadline("linkedin-search")
+            # Bound each LinkedIn query to a small slice of the remaining budget
+            left = _budget_left()
+            if left < 1.0:
+                # Not enough time left for a useful search
+                break
+            try:
+                results, provider = web_search(q, timeout=min(10, int(left) or 10), prefer="searxng", ai_extract=False)
+                for r in results:
+                    url = r.get("url", "")
+                    if "linkedin.com/in/" not in url or "/company/" in url:
+                        continue
+                    snippet = r.get("snippet", "") or r.get("content", "")
+                    if not is_valid_linkedin_profile(url, snippet):
+                        continue
+                    # H-3 (2026-07-26): slug must match at least one name token,
+                    # otherwise this is a different person's profile.
+                    if not slug_matches_name(url, full_name):
+                        print(
+                            f"[executives]   ⚠ LinkedIn slug does not match name "
+                            f"{full_name!r} for {url}; treating as a miss"
+                        )
+                        continue
+                    # H-4 (2026-07-26): snippet must mention the person (first
+                    # AND last name tokens) before we store it / derive a title
+                    # from it. Prevents snippet contamination from a different
+                    # person's tenure.
+                    if not _snippet_mentions_person(snippet, full_name):
+                        print(
+                            f"[executives]   ⚠ LinkedIn snippet does not mention "
+                            f"{full_name!r}; discarding snippet for {url}"
+                        )
+                        # Accept the URL but do NOT store the snippet or derive
+                        # a title from it. We keep climbing the query ladder only
+                        # if no better hit exists; for now record the URL and
+                        # blank the snippet so title extraction is skipped.
+                        linkedin_url = re.sub(r"\?.*", "", url).rstrip("/")
+                        linkedin_snippet = ""
+                        break
+                    linkedin_url = re.sub(r"\?.*", "", url).rstrip("/")
+                    linkedin_snippet = snippet
+                    break
+                if linkedin_url:
+                    break
+            except Exception as e:
+                # H-7 (2026-07-26): log search failures instead of silently
+                # swallowing them. A silent failure used to promote an AI-only
+                # contact to a high-confidence row.
+                print(f"[executives]   ⚠ LinkedIn search query failed for {full_name}: {e}")
+                continue
+    except Exception as e:
+        print(f"[executives] LinkedIn search failed for {full_name}: {e}")
+
+    # If LinkedIn found, try to extract better title/location from snippet
+    if linkedin_url:
+        # H-4 (2026-07-26): only derive a title from the snippet if it
+        # actually mentions the person. linkedin_snippet is blanked above
+        # when the snippet failed the name-token check, so this guard is
+        # belt-and-suspenders against any other call path that sets the
+        # snippet without the check.
+        if linkedin_snippet and _snippet_mentions_person(linkedin_snippet, full_name):
+            li_title = normalize_title(_extract_title_from_linkedin_snippet(linkedin_snippet))
+            if li_title:
+                verified_title = li_title
+            li_location = _parse_location_from_snippet(linkedin_snippet)
+            if li_location:
+                location = li_location
+        else:
+            print(
+                f"[executives]   ⚠ LinkedIn snippet empty or does not mention "
+                f"{full_name!r}; skipping title/location extraction"
+            )
+        print(f"[executives]   → LinkedIn profile found: {linkedin_url}")
+
+    # --- Layer 2: press/news/company verification when no LinkedIn ---
+    web_evidence = ""
+    press_search_failed = False
+    if not linkedin_url:
+        _check_deadline("press-search")
+        try:
+            from lf_search_providers import search as web_search
+            q = f'"{full_name}" "{company_name}"'
+            left = _budget_left()
+            results, provider = web_search(q, timeout=min(10, int(left) or 10), prefer="searxng", ai_extract=False)
+            for r in results[:3]:
+                snippet = r.get("snippet", "") or r.get("content", "")
+                title = r.get("title", "")
+                if company_name.lower() in (title + " " + snippet).lower():
+                    web_evidence += f"{title} {snippet}\n"
+        except Exception as e:
+            # H-7 (2026-07-26): log instead of silently swallowing. A silent
+            # failure here used to let an AI-only contact sail into the corpus
+            # at high confidence. The H-2 cap below still applies, but logging
+            # makes the failure visible in the server log.
+            print(f"[executives]   ⚠ Layer-2 press search failed for {full_name}: {e}")
+            press_search_failed = True
+
+    # --- Layer 3: AI verification / title cleaning / enrichment ---
+    if _ai_quick_ping(timeout=1):
+        _check_deadline("ai-research")
+        try:
+            from lf_ai_enrich import ai_research_contact
+            ai_result = ai_research_contact(
+                full_name=full_name,
+                company_name=company_name,
+                linkedin_url=linkedin_url,
+                current_title=verified_title,
+            )
+            if ai_result:
+                ai_title = ai_result.get("title", "").strip()
+                if ai_title:
+                    verified_title = ai_title
+                ai_location = ai_result.get("location", "").strip()
+                if ai_location and not location:
+                    location = ai_location
+                ai_phone = ai_result.get("phone", "").strip()
+                if ai_phone:
+                    contact["phone"] = ai_phone
+                ai_li = ai_result.get("linkedin_url", "").strip()
+                if ai_li and "linkedin.com/in/" in ai_li and not linkedin_url:
+                    linkedin_url = ai_li
+                # H-1 (2026-07-26): honor AI's is_current_employee=False unconditionally.
+                # The previous gate only dropped the contact when there was no
+                # linkedin_url and no web_evidence, letting a departed person slip
+                # in if a LinkedIn URL or press hit existed. The escalator already
+                # uses this signal to reject; ingest must too.
+                if ai_result.get("is_current_employee") is False:
+                    print(
+                        f"[executives]   ✗ AI indicates {full_name} is NOT a current "
+                        f"employee of {company_name}; rejecting at ingest"
+                    )
+                    return None
+        except Exception as e:
+            print(f"[executives] AI verification failed for {full_name}: {e}")
+
+    # Clean final title
+    verified_title = _clean_title(normalize_title(verified_title))
+    if not verified_title:
+        return None
+
+    # H-1 (2026-07-26): reject departed / retired / former / emeritus titles at ingest.
+    ai_verified_title = (contact.get("ai_verified_title") or "").strip()
+    if _is_departed_title(verified_title, ai_verified_title):
+        print(
+            f"[executives]   ✗ Departed/retired title for {full_name}: "
+            f"'{verified_title}' / '{ai_verified_title}'; rejecting at ingest"
+        )
+        return None
+
+    # Update local/HQ based on location
+    is_local, hq_contact = 1, 0
+    if location:
+        is_local, hq_contact = _determine_local_vs_hq_from_linkedin(
+            location, search_state or "CA", search_lat, search_lng, radius_miles
+        )
+
+    parts = full_name.split(" ", 1)
+    verified = {
+        **contact,
+        "first_name": parts[0] if parts else "",
+        "last_name": parts[1] if len(parts) > 1 else "",
+        "full_name": full_name,
+        "title": verified_title,
+        "linkedin_url": linkedin_url,
+        "location": location,
+        "is_local": is_local,
+        "hq_contact": hq_contact,
+        "linkedin_snippet": linkedin_snippet[:300] if linkedin_url else "",
+        "source_primary": "linkedin" if linkedin_url else contact.get("source_primary", "search"),
+        "source_linkedin_verified": 1 if linkedin_url else 0,
+        "source_linkedin_unverified": 0 if linkedin_url else 1,
+    }
+    if linkedin_url:
+        verified["data_provenance"] = f"LINKEDIN:verified:{linkedin_url}"
+
+    # H-2 / H-7 (2026-07-26): an AI-only contact (no LinkedIn URL, no press
+    # evidence) must not enter the corpus at high confidence. Cap at 0.40 and
+    # mark needs_review so the escalator's double-confirmation gate is the
+    # only path to 'verified'. This also covers the silent Layer-2 search
+    # failure case (H-7): when press search returns nothing (or failed) and
+    # there is no LinkedIn URL, the contact is visibly provisional.
+    if not linkedin_url and not web_evidence:
+        capped = min(float(verified.get("confidence_score", 0.0)), 0.40)
+        verified["confidence_score"] = capped
+        verified["pipeline_stage"] = "needs_review"
+        reason = "press search failed" if press_search_failed else "no press evidence"
+        print(
+            f"[executives]   ⚠ {full_name}: AI-only (no LinkedIn, {reason}) "
+            f"— confidence capped at {capped:.2f}, pipeline_stage=needs_review"
+        )
+    return verified
+
+
+def _is_valid_contact_to_save(contact: dict, company_name: str = "") -> bool:
+    """
+    Final validation gate before saving a contact.
+    Rejects malformed records extracted from directory pages or search snippets.
+    """
+    full_name = (contact.get("full_name") or "").strip()
+    title = (contact.get("title") or "").strip()
+    linkedin_url = (contact.get("linkedin_url") or "").strip()
+
+    # Name must look like a real person
+    if not full_name or not _looks_like_person_name(full_name):
+        print(f"[executives]   ✗ rejected name: '{full_name}'")
+        return False
+
+    # Title is required and must not be garbage
+    if not title:
+        print(f"[executives]   ✗ rejected {full_name}: no title")
+        return False
+    if len(title) > 90 or '?' in title or title.count('.') > 2:
+        print(f"[executives]   ✗ rejected {full_name}: bad title '{title[:60]}'")
+        return False
+
+    # If a linkedin_url is provided, it must be a real LinkedIn profile
+    if linkedin_url and "linkedin.com/in/" not in linkedin_url:
+        print(f"[executives]   ✗ rejected {full_name}: non-LinkedIn URL '{linkedin_url}'")
+        return False
+
+    # Reject if title is just the company name
+    company_lower = company_name.lower()
+    if company_lower and company_lower in title.lower() and len(title) < len(company_name) + 10:
+        print(f"[executives]   ✗ rejected {full_name}: title is company name")
+        return False
+
+    return True
 
 
 def _enrich_from_linkedin_fallback(
@@ -1481,158 +2393,228 @@ def _enrich_from_linkedin_fallback(
     search_lat: float = 0.0,
     search_lng: float = 0.0,
     radius_miles: int = 25,
+    per_candidate_timeout_s: int = 30,
 ) -> list[dict]:
     """
     Fallback when no company website leadership page is found.
 
-    Pipeline (QC-16, 2026-06-09):
-      1. SearXNG discovers LinkedIn URLs (PRIMARY for URL discovery)
-      2. AI verifies each URL's title + fills other fields (PRIMARY for fields)
-      3. Only use SearXNG snippet title if AI fails for a field
+    Pipeline (QC-16, updated 2026-06-18):
+      1. Run broad provider-rotated search (degoog -> 4get -> searxng -> paid APIs)
+         using full company and leadership queries.
+      2. Extract names + titles from search result titles and executive-directory
+         pages (craft.co, rocketreach, theofficialboard, linkedin.com/in).
+      3. Save contacts even when only a name+title is available.
     """
-    print(f"[executives] Using LinkedIn fallback search for {company_name}")
+    print(f"[executives] Using full-provider fallback search for {company_name}")
     all_contacts = []
     seen_urls = set()
     seen_names = set()
-    pending_validation = []  # collected here, validated in parallel below
 
-    location_bias = f" {search_state}" if search_state else ""
-    if search_city:
+    location_bias = ""
+    if search_city and search_state:
         location_bias = f" {search_city}, {search_state}"
+    elif search_state:
+        location_bias = f" {search_state}"
 
+    domain_query = ""
+    if website:
+        domain = extract_domain(website)
+        if domain:
+            domain_query = f" site:{domain} leadership OR team OR management OR executives"
+
+    name_variants = _build_name_variants(company_name)
+    # Use the stripped variant for broad searches if available, else company_name
+    broad_name = name_variants[1] if len(name_variants) > 1 else company_name
+
+    # Broader query set with more directories, city/state emphasis, and domain bias
     queries = [
         f'"{company_name}" CEO{location_bias}',
-        f'"{company_name}" President{location_bias}',
-        f'"{company_name}" "Vice President"{location_bias}',
-        f'"{company_name}" Director{location_bias}',
-        f'"{company_name}" Founder{location_bias}',
-        f'"{company_name}" "General Manager"{location_bias}',
+        f'"{company_name}" President OR "Chief Operating Officer"{location_bias}',
+        f'"{company_name}" "Vice President" OR VP{location_bias}',
+        f'"{company_name}" Director OR "General Manager" OR "Plant Manager"{location_bias}',
+        f'"{company_name}" Founder OR Owner OR "Managing Partner"{location_bias}',
+        f'"{company_name}" "executive team" OR "leadership team" OR "management team"',
+        f'"{company_name}" "executive team" craft.co OR rocketreach OR theofficialboard OR owler OR zoominfo',
+        f'"{company_name}" leadership OR management OR "senior leaders"',
+        f'"{broad_name}" "{search_state}" CEO OR President OR VP OR Director',
     ]
+    if domain_query:
+        queries.append(domain_query)
+    if search_city and search_state:
+        queries.append(f'"{broad_name}" "{search_city}" "{search_state}" executives')
+    # Directory-biased query
+    queries.append(f'"{company_name}" "linkedin.com/in" OR "rocketreach" OR "craft.co" OR "theofficialboard"')
 
-    # Run all 9 queries in parallel (was serial before — 9 × 20s = 180s,
-    # caused timeouts in the synchronous enrichment path). With 4 workers
-    # and 6s timeout each, max wall time is ~12s.
-    # ai_extract=False: skip the per-search AI extract step (which would
-    # call Ollama 3× per search and add ~18s each when AI is down).
+    # Run queries in parallel using full provider rotation (no prefer=).
+    # Per-query timeout raised to 12s because Degoog sometimes needs 8-10s
+    # and rotation lets the fastest working provider win.
     import concurrent.futures
     all_query_results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-        future_to_q = {ex.submit(search, q, 6, "searxng", False): q for q in queries}
-        for future in concurrent.futures.as_completed(future_to_q, timeout=15):
+        future_to_q = {ex.submit(search, q, 12, "", False): q for q in queries}
+        for future in concurrent.futures.as_completed(future_to_q, timeout=45):
             try:
                 results, provider = future.result()
                 all_query_results.append((future_to_q[future], results, provider))
             except Exception as e:
-                print(f"[executives] SearXNG query failed: {e}")
+                print(f"[executives] search query failed: {e}")
 
+    # Process all results. We now accept:
+    #   - linkedin.com/in URLs
+    #   - executive-directory pages (craft.co, rocketreach, etc.) — fetched and parsed
+    #   - search result titles that contain clear "Name - Title" patterns
     for q, results, provider in all_query_results:
-        for r in results[:3]:  # top 3 per query
+        for r in results[:5]:  # look at top 5 per query; directories often rank high
             url = r.get("url", "")
-            if "linkedin.com/in/" not in url or "/company/" in url:
+            if not url or "/company/" in url:
                 continue
             clean_url = re.sub(r"\?.*", "", url).rstrip("/")
-            if clean_url in seen_urls:
-                continue
-            seen_urls.add(clean_url)
-
             snippet = r.get("snippet", "") or r.get("content", "")
-            if not snippet:
-                continue
-            if not is_valid_linkedin_profile(clean_url, snippet):
-                continue
+            title = r.get("title", "") or ""
+            combined_text = f"{title} {snippet}"
+            company_mentioned = company_name.lower() in combined_text.lower()
 
-            name = extract_name_from_url(clean_url)
-            if not name or name.lower() in seen_names:
-                continue
-            seen_names.add(name.lower())
-
-            # ── STEP 1: AI PRIMARY — verify title at this specific company ──
-            # Skip if AI is known to be down (saves 30s per profile).
-            ai_result = None
-            if _ai_quick_ping(timeout=1):
-                try:
-                    from lf_ai_enrich import ai_research_contact
-                    ai_result = ai_research_contact(
-                        full_name=name,
-                        company_name=company_name,
-                        linkedin_url=clean_url,
-                        current_title="",
-                    )
-                except Exception:
-                    ai_result = None
-
-            # Pre-compute company_mentioned (used by title and contact)
-            company_mentioned = company_name.lower() in snippet.lower()
-
-            # ── STEP 2: Determine title (AI first, SearXNG fallback) ──
-            if ai_result and ai_result.get("title") and ai_result.get("is_verified"):
-                title = normalize_title(ai_result["title"])
-            elif ai_result and ai_result.get("title"):
-                title = normalize_title(ai_result["title"])
-            else:
-                # SearXNG snippet extraction
-                title = normalize_title(_extract_title_from_linkedin_snippet(snippet))
-
-            # If we have a valid LinkedIn URL + snippet that mentions the
-            # company, accept the contact even if we can't determine the
-            # title. The user can fill in the title in the UI. This is
-            # critical when AI is down — we don't want to throw away
-            # good LinkedIn matches just because the snippet is sparse.
-            if not title:
-                if company_mentioned:
-                    title = "Executive"  # placeholder, user fills in
-                else:
-                    print(f"[executives]   ✗ Skipped (no title and no company mention): {name}")
+            # ── Case 1: LinkedIn profile URL ─────────────────────────────
+            if "linkedin.com/in/" in clean_url:
+                if clean_url in seen_urls:
                     continue
+                if not snippet or not is_valid_linkedin_profile(clean_url, snippet):
+                    continue
+                name = extract_name_from_url(clean_url)
+                if not name or name.lower() in seen_names:
+                    continue
+                seen_urls.add(clean_url)
+                seen_names.add(name.lower())
 
-            location = _parse_location_from_snippet(snippet)
+                # Try title extraction from snippet first (fast)
+                li_title = normalize_title(_extract_title_from_linkedin_snippet(snippet))
+                # Optional AI validation if up, but never block on it
+                if not li_title and _ai_quick_ping(timeout=1):
+                    try:
+                        from lf_ai_enrich import ai_research_contact
+                        ai_result = ai_research_contact(
+                            full_name=name,
+                            company_name=company_name,
+                            linkedin_url=clean_url,
+                            current_title="",
+                        )
+                        if ai_result and ai_result.get("title"):
+                            li_title = normalize_title(ai_result["title"])
+                    except Exception:
+                        pass
+                if not li_title:
+                    if company_mentioned:
+                        li_title = "Executive"
+                    else:
+                        continue
 
-            # Check location matches search region
-            is_local = 1
-            hq_contact = 0
-            if location:
-                loc_lower = location.lower()
-                if search_state.lower() not in loc_lower:
-                    is_local = 0
-                    hq_contact = 1
+                location = _parse_location_from_snippet(snippet)
+                is_local = 1
+                hq_contact = 0
+                if location:
+                    if search_state.lower() not in location.lower():
+                        is_local = 0
+                        hq_contact = 1
 
-            parts = name.split(" ", 1)
-            first = parts[0] if parts else ""
-            last = parts[1] if len(parts) > 1 else ""
+                parts = name.split(" ", 1)
+                all_contacts.append({
+                    "first_name": parts[0],
+                    "last_name": parts[1] if len(parts) > 1 else "",
+                    "full_name": name,
+                    "title": li_title,
+                    "linkedin_url": clean_url,
+                    "is_local": is_local,
+                    "hq_contact": hq_contact,
+                    "confidence_score": 0.7 if company_mentioned else 0.5,
+                    "data_provenance": f"LINKEDIN:{provider}",
+                    "source_primary": "linkedin",
+                    "source_linkedin_verified": 1 if company_mentioned else 0,
+                    "source_linkedin_unverified": 1 if not company_mentioned else 0,
+                    "linkedin_snippet": snippet[:300],
+                })
+                print(f"[executives]   → LinkedIn candidate: {name} ({li_title})")
+                continue
 
-            contact = {
-                "first_name": first,
-                "last_name": last,
-                "full_name": name,
-                "title": title,
-                "linkedin_url": clean_url,
-                "is_local": is_local,
-                "hq_contact": hq_contact,
-                "confidence_score": 0.7 if company_mentioned else 0.5,
-                "data_provenance": f"LINKEDIN:{provider}",
-                "source_primary": "linkedin",
-                "source_linkedin_verified": 1 if company_mentioned else 0,
-                "source_linkedin_unverified": 1 if not company_mentioned else 0,
-                "linkedin_snippet": snippet[:300],
-            }
-            # Collect for batch validation (parallel below)
-            pending_validation.append((name, company_name, contact))
-            print(f"[executives]   → candidate: {name} ({title}) - {clean_url[:40]}")
+            # ── Case 2: Executive-directory page ─────────────────────────
+            if any(d in clean_url for d in _EXECUTIVE_DIRECTORY_DOMAINS):
+                if clean_url in seen_urls:
+                    continue
+                seen_urls.add(clean_url)
+                for p in _extract_from_directory_page(clean_url, company_name):
+                    name = p["name"]
+                    if name.lower() in seen_names:
+                        continue
+                    seen_names.add(name.lower())
+                    parts = name.split(" ", 1)
+                    all_contacts.append({
+                        "first_name": parts[0],
+                        "last_name": parts[1] if len(parts) > 1 else "",
+                        "full_name": name,
+                        "title": p["title"],
+                        "linkedin_url": "",
+                        "is_local": 1,
+                        "hq_contact": 0,
+                        "confidence_score": 0.65 if company_mentioned else 0.5,
+                        "data_provenance": f"DIRECTORY:{provider}:{clean_url}",
+                        "source_primary": "directory",
+                    })
+                    print(f"[executives]   → directory candidate: {name} ({p['title']})")
+                continue
 
-    # Google validation skipped in the synchronous endpoint (Issue:
-    # SearXNG is often slow under load; validation adds 9-15s for
-    # little value since candidates were already filtered by name).
-    # All candidates are accepted with their existing confidence
-    # score. The AI-first chain still validates via ai_research_contact.
-    for _, _, contact in pending_validation:
-        all_contacts.append(contact)
+            # ── Case 3: Extract from search result title/snippet text ────
+            for name, extracted_title in _extract_name_title_from_text(combined_text, company_name):
+                if name.lower() in seen_names:
+                    continue
+                seen_names.add(name.lower())
+                # Only store real LinkedIn URLs here; all other URLs are source evidence, not profiles
+                linkedin_url = ""
+                if "linkedin.com/in/" in clean_url:
+                    linkedin_url = clean_url
+                parts = name.split(" ", 1)
+                all_contacts.append({
+                    "first_name": parts[0],
+                    "last_name": parts[1] if len(parts) > 1 else "",
+                    "full_name": name,
+                    "title": extracted_title,
+                    "linkedin_url": linkedin_url,
+                    "is_local": 1,
+                    "hq_contact": 0,
+                    "confidence_score": 0.6 if company_mentioned else 0.45,
+                    "data_provenance": f"SEARCH:{provider}:{clean_url}",
+                    "source_primary": "search",
+                })
+                print(f"[executives]   → search candidate: {name} ({extracted_title})")
 
-    # Deduplicate and save
+    # Save all contacts that pass verification and final validation gate
     saved = []
     for contact in all_contacts:
-        contact_id = upsert_contact(company_id, contact)
-        if contact_id > 0:
-            saved.append(contact)
+        # Clean title BEFORE verification too (no bypasses)
+        contact["title"] = _clean_title(normalize_title(contact.get("title", "")))
+        if not contact["title"]:
+            print(f"[executives]   ✗ {contact.get('full_name','')} rejected: title empty after clean")
+            continue
+        verified = verify_and_enrich_person(
+            contact,
+            company_name=company_name,
+            company_id=company_id,
+            website=website,
+            search_city=search_city,
+            search_state=search_state,
+            search_lat=search_lat,
+            search_lng=search_lng,
+            radius_miles=radius_miles,
+            per_candidate_timeout_s=per_candidate_timeout_s,
+        )
+        if not verified:
+            continue
+        if _is_valid_contact_to_save(verified, company_name):
+            contact_id = upsert_contact(company_id, verified)
+            if contact_id > 0:
+                saved.append(verified)
+                try:
+                    resolve_and_validate_email(contact_id, source="search_ingest")
+                except Exception as e:
+                    print(f"[executives] Email chain failed for contact {contact_id}: {e}")
 
     local_count = sum(1 for c in saved if c.get("is_local"))
     hq_count = sum(1 for c in saved if c.get("hq_contact"))
@@ -1730,6 +2712,24 @@ if __name__ == "__main__":
         print(f"  {status}: {name!r} → {result} (expected {expected})")
 
     print("\n=== Self-test complete ===")
+
+
+def _build_name_variants(company_name: str) -> list[str]:
+    """Generate simple name variants to broaden executive search."""
+    if not company_name:
+        return []
+    variants = set()
+    base = company_name.strip()
+    variants.add(base)
+    # Strip common suffixes
+    stripped = re.sub(r"\s+(Inc\.?|LLC|Corp\.?|Corporation|Ltd\.?|Company|Co\.?)$", "", base, flags=re.IGNORECASE).strip()
+    if stripped and stripped != base:
+        variants.add(stripped)
+    # Initialism: "L3 Harris Technologies" -> "L3"
+    words = base.split()
+    if len(words) >= 2:
+        variants.add(words[0])
+    return list(variants)
 
 
 def extract_domain(website: str) -> str:
