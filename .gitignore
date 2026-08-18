@@ -61,3 +61,6 @@ scripts/*_log_*.json
 
 # Backups inside docs/
 docs/*.bak*
+
+# Chrome extension internal revisions (snapshots and sync script)
+static/chrome-extension/.revisions/
