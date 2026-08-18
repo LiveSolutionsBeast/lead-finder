@@ -6,11 +6,15 @@ __pycache__/
 .Python
 *.egg-info/
 .pytest_cache/
+.venv/
 
 # Backups / databases
 *.db
 *.db.bak
 *.bak
+*.bak-*
+*.db.bak-*
+.bak-*
 backups/
 
 # Exports
@@ -21,6 +25,7 @@ exports/
 # Logs
 logs/
 *.log
+*.tail
 
 # AI stack
 email-validator-fork/
@@ -32,3 +37,27 @@ email-validator-fork/
 .idea/
 *.swp
 .DS_Store
+
+# Generated caches / runtime artifacts
+geocode_cache.json
+provider_usage.json
+ca_city_coords.json
+engagement_verify_plan.json
+pixelrag_validation_report.json
+openwebui-enhance.json
+lead-finder.json
+lead-finder-*.json
+lead-finder-*.md
+lead-finder.md
+webui.md
+LEAD_FINDER_DISCOVERY_SOP.md
+lf_ai_discovery_prompt.md
+
+# Debug / profiling output
+debug/
+
+# Per-run script logs (scripts/*_log_*.json)
+scripts/*_log_*.json
+
+# Backups inside docs/
+docs/*.bak*

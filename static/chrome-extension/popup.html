@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lead Finder — Push Profile</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+<header>
+  <h1>Lead Finder</h1>
+  <span id="statusPill" class="pill">—</span>
+  <div id="serverHint" class="server-hint"></div>
+</header>
+
+<section id="extracting" class="card">
+  <p>Reading the LinkedIn profile…</p>
+  <p class="hint" id="extractHint">Looking for the Experience section.</p>
+</section>
+
+<section id="formSection" class="card" hidden>
+  <div class="row">
+    <label>LinkedIn URL</label>
+    <input type="text" id="linkedin_url" readonly />
+  </div>
+  <div class="row">
+    <label>Full name</label>
+    <input type="text" id="full_name" />
+  </div>
+  <div class="row split">
+    <div>
+      <label>First</label>
+      <input type="text" id="first_name" />
+    </div>
+    <div>
+      <label>Last</label>
+      <input type="text" id="last_name" />
+    </div>
+  </div>
+  <div class="row">
+    <label>Current title</label>
+    <input type="text" id="current_title" />
+  </div>
+  <div class="row">
+    <label>Current company</label>
+    <input type="text" id="current_company" />
+  </div>
+  <div class="row">
+    <label>Location</label>
+    <input type="text" id="location" />
+  </div>
+  <div class="row split">
+    <div>
+      <label>Email (optional)</label>
+      <input type="email" id="email" />
+    </div>
+    <div>
+      <label>Phone (optional)</label>
+      <input type="text" id="phone" />
+    </div>
+  </div>
+
+  <details class="experience">
+    <summary>Experience history (<span id="expCount">0</span> roles)</summary>
+    <div id="expList"></div>
+  </details>
+</section>
+
+<section id="matchSection" class="card" hidden>
+  <h2>Match</h2>
+  <p class="hint">Choose what to do with this profile. The matcher on the server already found candidates — confirm or override below.</p>
+
+  <div class="match-options" id="matchOptions">
+    <label class="match-opt" data-action="update_existing" hidden>
+      <input type="radio" name="match_action" value="update_existing" />
+      <div>
+        <strong>Update existing contact</strong>
+        <span class="match-detail" id="matchUpdateDetail"></span>
+      </div>
+    </label>
+
+    <label class="match-opt" data-action="new_contact_existing_company" hidden>
+      <input type="radio" name="match_action" value="new_contact_existing_company" />
+      <div>
+        <strong>Create new contact at existing company</strong>
+        <span class="match-detail" id="matchNewAtExistingDetail"></span>
+      </div>
+    </label>
+
+    <label class="match-opt" data-action="new_company_new_contact">
+      <input type="radio" name="match_action" value="new_company_new_contact" />
+      <div>
+        <strong>Create new company + new contact</strong>
+        <span class="match-detail">A brand-new company record will be created from <em id="newCompanyName">this profile</em>.</span>
+      </div>
+    </label>
+
+    <label class="match-opt" data-action="discard">
+      <input type="radio" name="match_action" value="discard" />
+      <div>
+        <strong>Discard</strong>
+        <span class="match-detail">Don't write anything. The audit log will still record the discarded push.</span>
+      </div>
+    </label>
+  </div>
+
+  <div id="contactTieDropdown" hidden>
+    <label>Multiple candidates match — pick the right one:</label>
+    <select id="contactTieSelect"></select>
+  </div>
+
+  <label id="manualConfirmRow" class="manual-confirm" hidden>
+    <input type="checkbox" id="confirmOverwriteManual" />
+    <span>This contact is <code>is_manually_edited=1</code>. I confirm I want to overwrite it.</span>
+  </label>
+
+  <div class="actions">
+    <button id="sendBtn" class="primary" disabled>Send to Lead Finder</button>
+    <button id="rescanBtn" class="secondary">Re-scan page</button>
+    <button id="debugBtn" class="secondary">Send debug snapshot</button>
+  </div>
+
+  <div id="result"></div>
+</section>
+
+<section id="configSection" class="card">
+  <details>
+    <summary>Settings (API endpoint + key)</summary>
+    <div class="row">
+      <label>API base URL</label>
+      <input type="text" id="apiBase" />
+    </div>
+    <div class="row">
+      <label>API key</label>
+      <input type="text" id="apiKey" />
+    </div>
+    <div class="actions">
+      <button id="saveConfigBtn" class="secondary">Save settings</button>
+      <span id="configStatus" class="hint"></span>
+    </div>
+  </details>
+</section>
+
+<section id="highlightInbox" class="card" hidden>
+  <h2>Highlighted text</h2>
+  <p class="hint">From your last selection on the page.</p>
+  <div class="hl-context"><strong>Context:</strong> <span id="hlContext"></span></div>
+  <textarea id="hlText" rows="3" readonly></textarea>
+  <div class="actions">
+    <button id="hlCopyBtn" class="secondary">Copy</button>
+    <button id="hlDismissBtn" class="secondary">Dismiss</button>
+  </div>
+</section>
+
+<script src="popup.js"></script>
+</body>
+</html>

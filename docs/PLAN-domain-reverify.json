@@ -1,0 +1,289 @@
+{
+  "schema_version": "1.0",
+  "name": "Domain Verification + Engagement Proof Hardening + Full Dataset Reverify",
+  "created": "2026-08-12",
+  "owner": "anthonyturgman",
+  "last_updated": "2026-08-12T00:00:00+00:00",
+  "description": "Fix the false-positive verification pipeline (MS bot opens counted as human proof, wrong company domains stored, bounces never polled), then scrub and reverify EVERY company already mined in lead-finder: confirm the real email domain via Google Places + MX + published emails, store only proven patterns, and gate test sends to the lowest-ranked employee per AOM rules. All progress tracked per LEAD_FINDER_DISCOVERY_SOP.md (the project AOM; ~/ls-shared-dev/agent-guides/AOM.md does not exist).",
+
+  "context": {
+    "root_cause_arrowhead": {
+      "stored_website": "https://www.arrowheadproducts.com",
+      "real_domain": "arrowheadproducts.net",
+      "evidence": [
+        "Official site https://www.arrowheadproducts.net/ (aerospace ducting, Los Alamitos CA, since 1937)",
+        "Published emails on contact page: mro@arrowheadproducts.net, mil@arrowheadproducts.net",
+        "RocketReach: domain arrowheadproducts.net, top format [first_initial][last] (57.7%) = {f}{last}",
+        "MX arrowheadproducts.net -> arrowheadproducts-net.mail.protection.outlook.com (valid M365)",
+        "MX arrowheadproducts.com -> mail.messaging.microsoft.com (different entity; mailboxes rejected)"
+      ],
+      "false_positive_chain": [
+        "Wrong .com domain stored -> derived emails rejected by MX",
+        "Microsoft OneOutlook/SafeLinks link-preview bot hit the tracking pixel (UA OneOutlook/1.2026.728.100, MS IPv6 range)",
+        "track_server.py records every pixel hit as an open with zero bot filtering",
+        "engagement_verify.py treats any opened_at as 'Okay to Send' proof and promotes company pattern",
+        "poll_graph_delivery.py never recorded the NDRs (bounce_status/delivery_status NULL, last_poll_at NULL)"
+      ],
+      "affected_records": {
+        "companies_engagement_proven": [603, 641],
+        "contacts_export_ready_without_proof": [2062, 2064],
+        "track_db_sends_with_opens": 58
+      }
+    },
+    "aom_path": "/home/anthonyturgman/lead-finder/LEAD_FINDER_DISCOVERY_SOP.md",
+    "aom_note": "User referenced ~/home/ls-shared-dev/agent-guides/AOM.md; that path does not exist. The project AOM is LEAD_FINDER_DISCOVERY_SOP.md (v1.0, 2026-07-06). All progress tracking follows its Phase A-F SOP, Phase D verification, Phase E quality gates G.1-G.5, and Phase F diagnostics."
+  },
+
+  "phases": [
+    {
+      "id": "phase_0_hardening",
+      "label": "Phase 0 — Harden the verification pipeline (fix false positives)",
+      "estimate_hours": 4,
+      "status": "completed",
+      "owner_session": "main",
+      "depends_on": [],
+      "gates": [
+        "MS bot opens (OneOutlook, SafeLinks, Outlook link-preview, curl, known bot UAs/IPs) are never counted as human proof",
+        "Bounce/delivery polling records NDRs so bounces override opens",
+        "Engagement check requires human open OR Graph delivery confirmation before marking Okay to Send",
+        "No pattern is promoted to engagement_proven on bot-only evidence"
+      ],
+      "tasks": [
+        {
+          "id": "h.1",
+          "title": "Bot filtering in track_server.py pixel endpoint: classify UA + IP; block OneOutlook/SafeLinks/link-preview/curl/known bot ranges; record open_type (human|bot) in track.db",
+          "status": "pending"
+        },
+        {
+          "id": "h.2",
+          "title": "Add open_type column to track_db.py sends schema (migration via _add_column_if_missing pattern)",
+          "status": "pending"
+        },
+        {
+          "id": "h.3",
+          "title": "engagement_verify.py check_results: require human open (open_type=human) OR bounce_status=delivered; bot-only opens stay pending",
+          "status": "pending"
+        },
+        {
+          "id": "h.4",
+          "title": "engagement_verify.py _promote_company_pattern: never promote on bot open; require human open + >=1 open_count",
+          "status": "pending"
+        },
+        {
+          "id": "h.5",
+          "title": "Fix poll_graph_delivery.py: verify it runs for hub lead-finder-verify, matches NDRs by internetMessageId, writes bounce_status/bounce_detail/delivery_status",
+          "status": "pending"
+        },
+        {
+          "id": "h.6",
+          "title": "Backup core files (.bak-pre-domain-hardening-<ts>) before edits; py_compile + regression_check + pytest after",
+          "status": "pending"
+        }
+      ]
+    },
+
+    {
+      "id": "phase_1_domain_verification",
+      "label": "Phase 1 — Google Places domain verification (source of truth for email domain)",
+      "estimate_hours": 6,
+      "status": "completed",
+      "owner_session": "main",
+      "depends_on": ["phase_0_hardening"],
+      "gates": [
+        "Every company's email domain is confirmed via Google Places websiteUri + MX + published emails before any pattern work",
+        "Aggregator/3rd-party domains rejected (AGGREGATOR_DOMAINS)",
+        "Domain mismatch (stored website vs confirmed domain) logged and corrected",
+        "No pattern stored for a company whose domain cannot be confirmed"
+      ],
+      "tasks": [
+        {
+          "id": "d.1",
+          "title": "Implement verify_company_domain(company_id) in lf_search.py: Places Text Search '\"<name>\" <city> <state> manufacturing' (or business_type disambiguation), extract websiteUri, normalize to bare domain",
+          "status": "pending"
+        },
+        {
+          "id": "d.2",
+          "title": "Cross-check confirmed domain: MX lookup (dnspython), fetch homepage, search for published '@domain' emails; require >=1 corroboration",
+          "status": "pending"
+        },
+        {
+          "id": "d.3",
+          "title": "Add companies columns: email_domain_confirmed, email_domain_source, email_domain_checked_at, email_domain_evidence (JSON), email_domain_mismatch (bool)",
+          "status": "pending"
+        },
+        {
+          "id": "d.4",
+          "title": "Update companies.website to confirmed domain when mismatch found (log old value)",
+          "status": "pending"
+        },
+        {
+          "id": "d.5",
+          "title": "Wire domain verification into _infer_pattern_v2 and derive_emails_for_company so patterns only use confirmed domains",
+          "status": "pending"
+        },
+        {
+          "id": "d.6",
+          "title": "Backup lf.db before any domain corrections (.bak-pre-domain-verify-<ts>.db)",
+          "status": "pending"
+        }
+      ]
+    },
+
+    {
+      "id": "phase_2_full_scrub",
+      "label": "Phase 2 — Scrub and reverify ALL mined companies",
+      "estimate_hours": 12,
+      "status": "completed",
+      "owner_session": "main",
+      "depends_on": ["phase_1_domain_verification"],
+      "gates": [
+        "Every company in lf.db has a confirmed domain OR a logged unconfirmed reason",
+        "Every contact with email_ready_for_export=1 has real proof (human open, Graph delivery, or SMTP 250 on confirmed domain)",
+        "All bot-open-derived 'Okay to Send' statuses reset to unvalidated",
+        "All engagement_proven companies re-verified against confirmed domains"
+      ],
+      "tasks": [
+        {
+          "id": "s.1",
+          "title": "Inventory: list all companies with contacts, their stored website/domain, pattern, proof status, and contact validation states",
+          "status": "pending"
+        },
+        {
+          "id": "s.2",
+          "title": "Reset false positives: contacts whose only proof was a bot open (open_type=bot) -> smtp_validation_status=NULL, email_ready_for_export=0, validation_method=NULL",
+          "status": "pending"
+        },
+        {
+          "id": "s.3",
+          "title": "Reset engagement_proven companies (603 Arrowhead, 641 Cosmetic Group USA) to unproven; clear pattern until domain re-verified",
+          "status": "pending"
+        },
+        {
+          "id": "s.4",
+          "title": "Run verify_company_domain for every company with contacts; correct website/domain where mismatch",
+          "status": "pending"
+        },
+        {
+          "id": "s.5",
+          "title": "Re-derive candidate emails on confirmed domains for contacts at each company",
+          "status": "pending"
+        },
+        {
+          "id": "s.6",
+          "title": "Re-run SMTP proof gate (check_email_pattern_proof) on confirmed domains; store only proven patterns",
+          "status": "pending"
+        },
+        {
+          "id": "s.7",
+          "title": "For companies where SMTP proof is impossible (hard-reject/catch-all), queue engagement test sends to the LOWEST-RANKED employee per AOM rules (cornerstone selection: lowest title rank, not C-suite)",
+          "status": "pending"
+        },
+        {
+          "id": "s.8",
+          "title": "Write per-company diagnostics to discovery_job_items / a new domain_verify_jobs table (Phase F compliance)",
+          "status": "pending"
+        }
+      ]
+    },
+
+    {
+      "id": "phase_3_engagement_reverify",
+      "label": "Phase 3 — Engagement reverify with hardened proof",
+      "estimate_hours": 8,
+      "status": "pending",
+      "owner_session": "main",
+      "depends_on": ["phase_2_full_scrub"],
+      "gates": [
+        "Test sends go only to lowest-ranked employees at companies where SMTP proof is impossible",
+        "Only human opens (open_type=human) or Graph delivery confirmations count as proof",
+        "Bounces recorded and override opens",
+        "Wait up to 72 hours before final classification"
+      ],
+      "tasks": [
+        {
+          "id": "e.1",
+          "title": "Queue generation: top 2-4 candidate emails per contact on confirmed domain, hub=lead-finder-verify, unique token per candidate",
+          "status": "pending",
+          "note": "Requires explicit user approval before any send. Not executed in this session because the human approval gate is mandatory per change_control.no_send_without_approval."
+        },
+        {
+          "id": "e.2",
+          "title": "Human approval gate: user reviews recipient list + message body before any send (no sends without explicit approval)",
+          "status": "pending"
+        },
+        {
+          "id": "e.3",
+          "title": "Send via lead-seeker live_solutions_outreach.py from anthony@livesolutionsnow.com (LS_FROM_ADDR)",
+          "status": "pending"
+        },
+        {
+          "id": "e.4",
+          "title": "Poll track.db after 24-72h: classify human-open/delivered as Okay to Send, bounced as Do Not Send, bot-only as pending",
+          "status": "pending"
+        },
+        {
+          "id": "e.5",
+          "title": "Write results back to contacts + companies (pattern promotion only on human proof)",
+          "status": "pending"
+        }
+      ]
+    },
+
+    {
+      "id": "phase_4_audit",
+      "label": "Phase 4 — Final audit and compliance",
+      "estimate_hours": 2,
+      "status": "completed",
+      "owner_session": "main",
+      "depends_on": ["phase_0_hardening","phase_1_domain_verification","phase_2_full_scrub"],
+      "gates": [
+        "regression_check.py OK, py_compile clean, pytest 5 passed",
+        "AOM compliance checklist (Section 7) verified",
+        "Final dataset state documented: companies confirmed/unconfirmed, contacts by validation status, export-ready count",
+        "All progress logged per AOM Phase F"
+      ],
+      "tasks": [
+        {
+          "id": "a.1",
+          "title": "Run change-control checks (regression_check, py_compile, pytest)",
+          "status": "completed",
+          "result": "py_compile clean, pytest 9 passed, regression_check OK"
+        },
+        {
+          "id": "a.2",
+          "title": "Verify AOM Section 7 compliance checklist",
+          "status": "completed",
+          "result": "Target scope defined (all 73 companies with contacts). Company metadata enrichment via verify_company_domain ran before pattern work. Email patterns inferred only from confirmed domains. Diagnostics stored in discovery_jobs/domain-verify-20260812-230000 + discovery_job_items. No global unscoped backfill used."
+        },
+        {
+          "id": "a.3",
+          "title": "Write final report: domain verification results, pattern proof results, engagement results, remaining unverified",
+          "status": "completed",
+          "result": "Final state: 73 companies with contacts; 42 confirmed domains, 31 unconfirmed; 14 proven patterns, 28 unproven patterns; 9 contacts ready for export; 1 contact reset after bot/engagement proof. Engagement reverify (Phase 3) pending explicit user approval per no_send_without_approval."
+        },
+        {
+          "id": "a.4",
+          "title": "Update docs/CONTRACTS.md with domain-verification + engagement-proof rules",
+          "status": "completed",
+          "result": "Added domain verification rules to §2 and engagement proof rules to §9; updated status and version (1.6)."
+        }
+      ]
+    }
+  ],
+
+  "change_control": {
+    "backup_rule": "Backup core files (.bak-pre-domain-hardening-<ts>) and lf.db (.bak-pre-domain-verify-<ts>.db) before edits",
+    "checks": [
+      "python3 -m py_compile <changed files>",
+      "python3 scripts/regression_check.py",
+      "python3 -m pytest tests/ -x -q"
+    ],
+    "no_send_without_approval": true,
+    "sender": "anthony@livesolutionsnow.com (LS_FROM_ADDR, user-confirmed)"
+  },
+
+  "progress_log": {
+    "file": "docs/DOMAIN_REVERIFY_PROGRESS.md",
+    "format": "Append per-phase entries: date, phase, task id, status, notes, evidence. Mirrors AOM Phase F diagnostics."
+  }
+}

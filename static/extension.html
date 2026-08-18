@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Lead Finder - Chrome Extension</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f172a'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-weight='800' font-size='32' fill='%2338bdf8'%3ELS%3C/text%3E%3C/svg%3E"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#f1f5f9;min-height:100vh;padding:2rem;max-width:960px;margin:0 auto}
+h1{color:#38bdf8;margin-bottom:1rem}
+h2{color:#f1f5f9;margin-top:2rem;margin-bottom:0.5rem;font-size:1.1rem}
+.nav{display:flex;gap:0.5rem;margin-bottom:2rem;flex-wrap:wrap}
+.nav a{padding:0.6rem 1.2rem;background:#1e293b;color:#94a3b8;text-decoration:none;border-radius:6px;font-size:0.9rem}
+.nav a.active{background:#38bdf8;color:#0f172a;font-weight:600}
+.card{background:#1e293b;border-radius:10px;padding:1.5rem;margin-bottom:1.5rem}
+.card h2{color:#94a3b8;text-transform:uppercase;font-size:0.85rem;letter-spacing:0.05em;margin-bottom:0.5rem}
+p,li{font-size:0.9rem;line-height:1.6;color:#cbd5e1;margin-bottom:0.5rem}
+ol,ul{padding-left:1.5rem}
+code{background:#0f172a;color:#38bdf8;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.85rem}
+.kbd{background:#334155;color:#f1f5f9;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.85rem;font-family:monospace}
+.warn{background:#f59e0b22;border:1px solid #f59e0b;padding:0.75rem 1rem;border-radius:6px;color:#f59e0b;font-size:0.85rem;margin:0.5rem 0}
+.file-list{background:#0f172a;padding:1rem;border-radius:6px;font-family:monospace;font-size:0.8rem;margin:0.5rem 0;max-height:300px;overflow-y:auto}
+.file-list div{padding:0.15rem 0}
+</style>
+</head>
+<body>
+<div class="nav">
+<a href="/finder/">Search</a>
+<a href="/finder/sessions">Sessions</a>
+<a href="/finder/companies">Companies</a>
+<a href="/finder/contacts">Contacts</a>
+<a href="/finder/emails">Email Validation</a>
+<a href="/finder/audit">Audit</a>
+<a href="/finder/extension" class="active">Chrome Extension</a>
+</div>
+
+<h1>Lead Finder — Chrome Extension</h1>
+
+<div class="card">
+<h2>What this does</h2>
+<p>The Lead Finder Chrome extension lets you push real LinkedIn profile data
+into the Lead Finder database. You browse LinkedIn profiles manually
+(with your premium membership), click the extension icon on a profile
+page, and the extension extracts the data, shows you a confirmation
+popup, and writes the result.</p>
+<p><strong>Important:</strong> The popup <em>always</em> shows. You have to
+click "Send" for every push. There is no silent-update mode.</p>
+</div>
+
+<div class="card">
+<h2>Install (Chrome)</h2>
+<ol>
+<li>Open <code>chrome://extensions/</code> in a new tab.</li>
+<li>Toggle <strong>Developer mode</strong> on (top right).</li>
+<li>Click <strong>Load unpacked</strong>.</li>
+<li>Select this directory: <code>/home/anthonyturgman/lead-finder/static/chrome-extension/</code></li>
+<li>The extension appears in the toolbar (a small blue square icon).</li>
+</ol>
+<p><strong>Install on the Chrome profile that is logged into your premium
+LinkedIn account.</strong> The extension inherits whatever access that
+profile has — and that profile alone.</p>
+</div>
+
+<div class="card">
+<h2>Use</h2>
+<ol>
+<li>Browse to a LinkedIn profile: <code>https://www.linkedin.com/in/&lt;slug&gt;</code></li>
+<li>Click the Lead Finder icon in the toolbar.</li>
+<li>The popup reads the Experience section and pre-fills the form.</li>
+<li>Edit any field. The matcher shows you what it found:
+  <ul>
+    <li><strong>Update existing contact</strong> — only shown if a
+      matching contact was found in the database.</li>
+    <li><strong>Create new contact at existing company</strong> —
+      only shown if a matching company was found.</li>
+    <li><strong>Create new company + new contact</strong> — always available.</li>
+    <li><strong>Discard</strong> — always available. Records the discard
+      in the audit log but writes nothing.</li>
+  </ul>
+</li>
+<li>Pick an action and click <strong>Send to Lead Finder</strong>.</li>
+</ol>
+</div>
+
+<div class="card">
+<h2>Sync from server (Windows laptop workflow)</h2>
+<p>The extension's default API base is
+<code>http://lsb-wsl.tail4f816e.ts.net:8798</code> (your Tailscale
+hostname), so it works from any device on your Tailnet without manual
+configuration.</p>
+<p>If you keep the canonical extension files on a server (e.g. an RDP host
+running the lead-finder Python server), you can pull the latest files to
+your laptop as a zip:</p>
+<pre><code># PowerShell on the laptop
+$server = "http://lsb-wsl.tail4f816e.ts.net:8798"
+$dst    = "C:\Users\AnthonyTurgman\OneDrive - Live Solutions\_AI Model Development\chrome-extension"
+Invoke-WebRequest -Uri "$server/extension/download" -OutFile "$env:USERPROFILE\Downloads\chrome-extension.zip"
+Expand-Archive "$env:USERPROFILE\Downloads\chrome-extension.zip" -DestinationPath $dst -Force
+# Then: chrome://extensions/  → click "Reload" on Lead Finder.</code></pre>
+<p>The zip contains the same 10 files that live in
+<code>static/chrome-extension/</code> on the server, with directory structure
+preserved. Extract over the top of your existing copy to update.</p>
+</div>
+
+<div class="card">
+<h2>Update after code changes</h2>
+<p>During development, just refresh the extension on
+<code>chrome://extensions/</code> after editing files. The
+"Service worker (invalid)" button appears if the manifest changed;
+click <strong>Reload</strong> on the extension card.</p>
+</div>
+
+<div class="card">
+<h2>API settings</h2>
+<p>The popup has a <strong>Settings</strong> panel at the bottom
+(expand it). The defaults are:</p>
+<ul>
+<li>API base URL: <code>http://localhost:8798</code></li>
+<li>API key: the value of <code>lf_api_key</code> in <code>lf_config.json</code></li>
+</ul>
+<p>If your Lead Finder is on a different host, change the API base URL.
+The API key never leaves the background service worker (Manifest v3
+service workers are isolated from content scripts).</p>
+</div>
+
+<div class="card">
+<h2>Known limitations</h2>
+<ul>
+<li><strong>No headline extraction.</strong> Per the design, only the
+  Experience section is read. Headlines are unreliable.</li>
+<li><strong>No silent updates.</strong> The popup always shows.</li>
+<li><strong>No automated scraping.</strong> You browse and click. The
+  extension is a tool you drive, not a background scraper.</li>
+<li><strong>Premium LinkedIn required</strong> for some profiles. If
+  LinkedIn returns a "limited profile" page, the Experience section
+  may not load.</li>
+<li><strong>Date parsing is heuristic.</strong> LinkedIn's date format
+  is human-readable ("Mar 2022 - Present") and may be parsed imperfectly
+  in some edge cases.</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>Files in this install</h2>
+<div class="file-list" id="fileList">Loading…</div>
+</div>
+
+<div class="card">
+<h2>Highlight-to-extract mode (Phase 3)</h2>
+<p>On any LinkedIn page, select text with your mouse. A small
+"Extract to Lead Finder" button appears near the cursor. Click it
+to capture the selection into the popup's Highlight Inbox. Useful
+for grabbing emails, phone numbers, or notes that aren't in the
+Experience section.</p>
+</div>
+
+<div class="card">
+<h2>Audit log</h2>
+<p>Every push (including discards) is recorded in the
+<code>pending_pushes</code> table. The
+<a href="/finder/audit">Audit page</a> shows the last 50
+pushes in a read-only view.</p>
+</div>
+
+</body>
+<script>
+fetch('/extension/filecheck').then(r => r.json()).then(d => {
+  const el = document.getElementById('fileList');
+  if (d.ok) {
+    el.innerHTML = d.files.map(f =>
+      '<div>' + f.path + ' <span style="color:#64748b;">(' + f.size + ' bytes)</span></div>'
+    ).join('');
+  } else {
+    el.textContent = 'Error: ' + (d.error || 'unknown');
+  }
+});
+</script>
+</html>

@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Lead Finder — LinkedIn Injector",
+  "version": "1.0.0",
+  "description": "Push real LinkedIn profile data into the Lead Finder database with human-in-the-loop confirmation. Reads the Experience section, shows an editable confirmation popup, and writes the result via the Lead Finder API.",
+  "minimum_chrome_version": "120",
+
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "https://www.linkedin.com/in/*"
+  ],
+
+  "action": {
+    "default_title": "Push this LinkedIn profile to Lead Finder",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/in/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["popup.html", "icons/*.png"],
+      "matches": ["https://www.linkedin.com/*"]
+    }
+  ],
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

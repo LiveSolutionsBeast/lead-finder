@@ -1,0 +1,103 @@
+/* popup.css — Lead Finder extension popup */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #0f172a;
+  color: #f1f5f9;
+  width: 480px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  position: sticky; top: 0; z-index: 10;
+}
+header h1 { font-size: 1rem; color: #38bdf8; }
+.server-hint {
+  font-size: 0.65rem;
+  color: #64748b;
+  margin-top: 0.2rem;
+  font-family: monospace;
+  word-break: break-all;
+}
+.pill {
+  font-size: 0.7rem; font-weight: 600;
+  padding: 0.2rem 0.5rem; border-radius: 999px;
+  background: #334155; color: #94a3b8;
+}
+.pill.ok { background: #22c55e33; color: #22c55e; }
+.pill.warn { background: #f59e0b33; color: #f59e0b; }
+.pill.error { background: #ef444433; color: #ef4444; }
+.card {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #1e293b;
+}
+.card h2 { font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.hint { color: #94a3b8; font-size: 0.75rem; margin-top: 0.25rem; }
+.row { margin: 0.4rem 0; }
+.row.split { display: flex; gap: 0.5rem; }
+.row.split > div { flex: 1; }
+.row label { display: block; font-size: 0.7rem; color: #94a3b8; margin-bottom: 0.15rem; text-transform: uppercase; }
+input[type="text"], input[type="email"], textarea, select {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  background: #0f172a;
+  color: #f1f5f9;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+input[readonly] { color: #94a3b8; }
+details.experience {
+  margin-top: 0.5rem;
+  background: #0f172a;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid #334155;
+}
+details.experience summary { cursor: pointer; font-size: 0.8rem; color: #94a3b8; }
+details.experience[open] summary { margin-bottom: 0.5rem; }
+.exp-entry {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid #1e293b;
+  font-size: 0.8rem;
+}
+.exp-entry:last-child { border-bottom: none; }
+.exp-entry .exp-title { color: #f1f5f9; font-weight: 600; }
+.exp-entry .exp-company { color: #38bdf8; }
+.exp-entry .exp-dates { color: #64748b; font-size: 0.7rem; }
+.match-options { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.5rem 0; }
+.match-opt {
+  display: flex; gap: 0.5rem;
+  padding: 0.5rem; border: 1px solid #334155; border-radius: 4px;
+  cursor: pointer;
+  background: #0f172a;
+}
+.match-opt:hover { background: #1e293b; }
+.match-opt input[type="radio"] { margin-top: 0.2rem; }
+.match-opt strong { display: block; font-size: 0.85rem; color: #f1f5f9; }
+.match-opt .match-detail { font-size: 0.75rem; color: #94a3b8; }
+.match-opt[data-action="update_existing"][data-disabled="1"] { opacity: 0.5; cursor: not-allowed; }
+.manual-confirm {
+  display: flex; gap: 0.5rem; align-items: flex-start;
+  background: #f59e0b22; border: 1px solid #f59e0b; padding: 0.5rem;
+  border-radius: 4px; margin: 0.5rem 0; font-size: 0.8rem;
+}
+.manual-confirm code { color: #f59e0b; }
+.actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+button { padding: 0.4rem 0.8rem; border: none; border-radius: 4px; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+button.primary { background: #38bdf8; color: #0f172a; }
+button.primary:hover:not(:disabled) { background: #0ea5e9; }
+button.secondary { background: #334155; color: #94a3b8; }
+button.secondary:hover { background: #475569; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+#result { margin-top: 0.5rem; font-size: 0.8rem; }
+#result.ok { color: #22c55e; }
+#result.error { color: #ef4444; }
+.hl-context { font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.3rem; }
+.hl-context span { color: #38bdf8; }
+#highlightInbox textarea { font-family: monospace; font-size: 0.75rem; }
