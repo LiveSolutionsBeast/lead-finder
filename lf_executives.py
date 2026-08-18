@@ -2057,7 +2057,8 @@ def discover_executives_ai_first(
 # FALLBACKS — invoked only when AI returns nothing useful.
 
 
-def discover_executives_ai_first(
+def verify_and_enrich_person(
+    contact: dict,
     company_name: str,
     company_id: int,
     website: str = "",

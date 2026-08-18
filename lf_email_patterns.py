@@ -226,7 +226,7 @@ def _infer_pattern(emails: list[str], domain: str) -> tuple[Optional[str], float
             else:
                 pattern = f"{{first}}-{{last}}@{domain}"
             # Confidence: 1.0 if 2+ found emails agree, else 0.0
-            confidence = 1.0 if len(found_emails) >= 2 else 0.0
+            confidence = 1.0 if len(emails) >= 2 else 0.0
             return pattern, confidence
 
     # No separator - could be firstlast, flast, firstl, last, first

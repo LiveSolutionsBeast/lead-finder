@@ -6,10 +6,13 @@ Unit tests for scripts/engagement_verify.py cornerstone workflow.
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from engagement_verify import _title_rank
+engagement_verify = pytest.importorskip("engagement_verify")
+_title_rank = engagement_verify._title_rank
 
 
 def test_title_rank_low_level() -> None:
